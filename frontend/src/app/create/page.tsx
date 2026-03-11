@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { Navbar } from "../../components/layout/Navbar";
-import { Button } from "../../components/ui/Button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/Card";
-import { Input, Textarea } from "../../components/ui/Input";
-import { useStacks } from "../../context/StacksContext";
-import { createTask } from "../../lib/contract";
+import React, { useState } from "react";
+import { Navbar } from "@/components/layout/Navbar";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { useStacks } from "@/context/StacksContext";
+import { createTask } from "@/lib/contract";
 import { toast } from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";

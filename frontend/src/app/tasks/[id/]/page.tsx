@@ -1,12 +1,12 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { Navbar } from "../../../components/layout/Navbar";
-import { Button } from "../../../components/ui/Button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../../../components/ui/Card";
-import { getTask, applyForTask, assignTask, startTask, completeTask, approveAndRelease, hasApplied } from "../../../lib/contract";
-import { formatSTX, truncateAddress } from "../../../lib/utils";
-import { useStacks } from "../../../context/StacksContext";
+import { Navbar } from "@/components/layout/Navbar";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/Card";
+import { getTask, applyForTask, assignTask, startTask, completeTask, approveAndRelease, hasApplied } from "@/lib/contract";
+import { formatSTX, truncateAddress } from "@/lib/utils";
+import { useStacks } from "@/context/StacksContext";
 import { toast } from "react-hot-toast";
 import { CheckCircle, Clock, Github, ShieldAlert, User, Wallet } from "lucide-react";
 import Link from "next/link";

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Navbar } from "../../components/layout/Navbar";
-import { Button } from "../../components/ui/Button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/Card";
-import { fetchAllTasks } from "../../lib/contract";
-import { formatSTX, truncateAddress } from "../../lib/utils";
+import { Navbar } from "@/components/layout/Navbar";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/Card";
+import { fetchAllTasks } from "@/lib/contract";
+import { formatSTX, truncateAddress } from "@/lib/utils";
 import { Clock, ExternalLink, RefreshCw, Search, Tag } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";

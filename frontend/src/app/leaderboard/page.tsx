@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Navbar } from "../../components/layout/Navbar";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/Card";
-import { fetchAllTasks } from "../../lib/contract";
-import { formatSTX, truncateAddress } from "../../lib/utils";
-import { Award, Medallion, Share2, Trophy, User, Zap } from "lucide-react";
+import { Navbar } from "@/components/layout/Navbar";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
+import { fetchAllTasks } from "@/lib/contract";
+import { formatSTX, truncateAddress } from "@/lib/utils";
+import { Award, Medal, Share2, Trophy, User, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function LeaderboardPage() {
@@ -110,7 +110,7 @@ export default function LeaderboardPage() {
           </div>
         ) : (
           <div className="text-center py-40 border border-dashed border-zinc-800 rounded-3xl bg-zinc-900/10">
-            <Medallion className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
+            <Medal className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
             <h3 className="text-xl font-bold">No data yet</h3>
             <p className="text-zinc-500 mt-2">Earn rewards by completing tasks to show up here!</p>
           </div>
@@ -120,7 +120,7 @@ export default function LeaderboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20">
             <Card className="bg-blue-600/5 border-blue-600/20">
                <CardHeader className="pb-2">
-                  <Medallion className="h-5 w-5 text-blue-500 mb-2" />
+                  <Medal className="h-5 w-5 text-blue-500 mb-2" />
                   <CardTitle className="text-sm uppercase tracking-widest text-blue-500">Global Pool</CardTitle>
                </CardHeader>
                <CardContent>
