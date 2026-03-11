@@ -1,0 +1,13 @@
+{
+  "name": "taskify",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Taskify — Decentralized bounty board on Stacks (Bitcoin L2)",
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "build": "pnpm --filter frontend build",
+    "test:contract": "pnpm --filter taskify-tests test"
+  }
+}
