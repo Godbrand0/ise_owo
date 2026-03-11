@@ -110,6 +110,19 @@
   { count: uint }
 )
 
+;; private helpers
+
+(define-private (sum-amounts (item { address: principal, amount: uint }) (total uint))
+  (+ total (get amount item))
+)
+
+(define-private (transfer-stx-reward (recipient { address: principal, amount: uint }) (prev-ok bool))
+  (if prev-ok
+    (is-ok (as-contract (stx-transfer? (get amount recipient) tx-sender (get address recipient))))
+    false
+  )
+)
+
 ;; public functions
 
 ;; User Registration
@@ -214,7 +227,7 @@
     )
 
     (var-set task-counter (+ id u1))
-    (print { event: "task-created", task-id: id, creator: tx-sender, token-type: token-type, funding: funding-amount })
+    (print { event: "task-created", task-id: id, creator: tx-sender, token-type: token-type, funding: funding-amount, tip-percent: tip-percent })
     (ok id)
   )
 )
@@ -341,6 +354,83 @@
   )
 )
 
+;; Mark Task Expired (Anyone can call once deadline passes)
+(define-public (mark-expired (task-id uint))
+  (let
+    (
+      (task (unwrap! (get-task task-id) ERR-TASK-NOT-FOUND))
+    )
+    (asserts! (> block-height (get deadline task)) ERR-DEADLINE-NOT-PASSED)
+    (asserts! (< (get status task) STATUS-COMPLETED) ERR-INVALID-STATE)
+
+    (map-set tasks { task-id: task-id } (merge task { status: STATUS-EXPIRED }))
+    (print { event: "task-expired", task-id: task-id })
+    (ok true)
+  )
+)
+
+;; Reclaim Expired Funds (Creator Only)
+(define-public (reclaim-funds (task-id uint))
+  (let
+    (
+      (task (unwrap! (get-task task-id) ERR-TASK-NOT-FOUND))
+      (amount (get funding-amount task))
+      (token-type (get token-type task))
+    )
+    (asserts! (is-eq (get creator task) tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (is-eq (get status task) STATUS-EXPIRED) ERR-INVALID-STATE)
+
+    (if (is-eq token-type TOKEN-STX)
+      (try! (as-contract (stx-transfer? amount tx-sender (get creator task))))
+      true ;; USDCx placeholder
+    )
+
+    (map-set tasks { task-id: task-id } (merge task { status: STATUS-CANCELLED }))
+    (print { event: "funds-reclaimed", task-id: task-id, creator: tx-sender, amount: amount })
+    (ok true)
+  )
+)
+
+;; Cancel Task (Creator Only - from Assigned or InProgress)
+(define-public (cancel-task (task-id uint))
+  (let
+    (
+      (task (unwrap! (get-task task-id) ERR-TASK-NOT-FOUND))
+      (amount (get funding-amount task))
+      (token-type (get token-type task))
+      (status (get status task))
+    )
+    (asserts! (is-eq (get creator task) tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (or (is-eq status STATUS-ASSIGNED) (is-eq status STATUS-IN-PROGRESS)) ERR-INVALID-STATE)
+
+    (if (is-eq token-type TOKEN-STX)
+      (try! (as-contract (stx-transfer? amount tx-sender (get creator task))))
+      true ;; USDCx placeholder
+    )
+
+    (map-set tasks { task-id: task-id } (merge task { status: STATUS-CANCELLED, assignee: none }))
+    (print { event: "task-cancelled", task-id: task-id, creator: tx-sender })
+    (ok true)
+  )
+)
+
+;; Reassign Expired Task (Creator Only)
+(define-public (reassign-task (task-id uint) (new-assignee principal))
+  (let
+    (
+      (task (unwrap! (get-task task-id) ERR-TASK-NOT-FOUND))
+    )
+    (asserts! (is-eq (get creator task) tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (is-eq (get status task) STATUS-EXPIRED) ERR-INVALID-STATE)
+    (asserts! (has-applied task-id new-assignee) ERR-NOT-APPLICANT)
+    (asserts! (is-some (get-user new-assignee)) ERR-NOT-REGISTERED)
+
+    (map-set tasks { task-id: task-id } (merge task { status: STATUS-ASSIGNED, assignee: (some new-assignee) }))
+    (print { event: "task-reassigned", task-id: task-id, new-assignee: new-assignee })
+    (ok true)
+  )
+)
+
 ;; Distribute Leaderboard Rewards (Admin Only)
 (define-public (distribute-rewards
     (token-type uint)
@@ -349,14 +439,23 @@
   (let
     (
       (pool (if (is-eq token-type TOKEN-STX) (var-get leaderboard-stx-pool) (var-get leaderboard-usdcx-pool)))
+      (total (fold sum-amounts recipients u0))
     )
     (asserts! (is-eq tx-sender CONTRACT-DEPLOYER) ERR-NOT-AUTHORIZED)
-    
+    (asserts! (> (len recipients) u0) ERR-ZERO-AMOUNT)
+    (asserts! (<= total pool) ERR-INSUFFICIENT-FUNDS)
+
     (if (is-eq token-type TOKEN-STX)
-      (var-set leaderboard-stx-pool u0)
-      (var-set leaderboard-usdcx-pool u0)
+      (begin
+        (var-set leaderboard-stx-pool (- pool total))
+        (asserts! (fold transfer-stx-reward recipients true) ERR-TRANSFER-FAILED)
+      )
+      (begin
+        (var-set leaderboard-usdcx-pool (- pool total))
+        true ;; USDCx placeholder
+      )
     )
-    (print { event: "leaderboard-distributed", token-type: token-type })
+    (print { event: "leaderboard-distributed", token-type: token-type, total: total, recipients: recipients })
     (ok true)
   )
 )
@@ -383,11 +482,31 @@
   (default-to TOKEN-STX (get token-type (map-get? tasks { task-id: task-id })))
 )
 
+(define-read-only (get-applicant-count (task-id uint))
+  (default-to u0 (get count (map-get? task-applicant-count { task-id: task-id })))
+)
+
+(define-read-only (get-task-counter)
+  (var-get task-counter)
+)
+
+(define-read-only (is-task-expired (task-id uint))
+  (match (map-get? tasks { task-id: task-id })
+    task (and
+      (> block-height (get deadline task))
+      (< (get status task) STATUS-COMPLETED)
+    )
+    false
+  )
+)
+
 (define-read-only (get-fee-info)
   {
-    stx-fees: (var-get withdrawable-stx-fees),
-    usdcx-fees: (var-get withdrawable-usdcx-fees),
-    stx-pool: (var-get leaderboard-stx-pool),
-    usdcx-pool: (var-get leaderboard-usdcx-pool)
+    total-stx-fees: (var-get total-stx-fees),
+    total-usdcx-fees: (var-get total-usdcx-fees),
+    withdrawable-stx-fees: (var-get withdrawable-stx-fees),
+    withdrawable-usdcx-fees: (var-get withdrawable-usdcx-fees),
+    leaderboard-stx-pool: (var-get leaderboard-stx-pool),
+    leaderboard-usdcx-pool: (var-get leaderboard-usdcx-pool)
   }
 )
