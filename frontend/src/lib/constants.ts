@@ -1,5 +1,4 @@
 import { createNetwork } from "@stacks/network";
-import { deployments } from "./clarigen-types";
 
 export const APP_NAME = "Taskify";
 export const APP_ICON = "/favicon.ico";

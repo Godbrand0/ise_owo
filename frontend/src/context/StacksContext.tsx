@@ -30,9 +30,12 @@ export function StacksProvider({ children }: { children: ReactNode }) {
   const appConfig = new AppConfig(["store_write", "publish_data"]);
   const userSession = new UserSession({ appConfig });
 
-  const address = userData?.profile?.stxAddress?.mainnet || userData?.profile?.stxAddress?.testnet || null;
-  // For simnet/devnet, we might need to handle address differently if it's not in profile
-  // but usually for Leather it provides both.
+  // Prefer the address that matches the configured network so we don't send
+  // a mainnet SP... address to a testnet contract (or vice versa).
+  const isMainnet = (NETWORK as any).isMainnet?.() ?? false;
+  const address = isMainnet
+    ? (userData?.profile?.stxAddress?.mainnet ?? null)
+    : (userData?.profile?.stxAddress?.testnet ?? userData?.profile?.stxAddress?.mainnet ?? null);
 
   const refreshUserData = async () => {
     if (!address) return;

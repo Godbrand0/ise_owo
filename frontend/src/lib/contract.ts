@@ -33,13 +33,15 @@ export const createTask = async (
   onFinish: (data: FinishedTxData) => void,
   onCancel: () => void
 ) => {
-  const amountMicroStacks = Math.floor(amountStx * STX_PRECISION);
   const deadlineBlocks = deadlineDays * 144; // Approx 144 blocks per day
 
-  // Calculate total funding including base fee and tip
-  const baseFee = Math.floor((amountMicroStacks * 2) / 100);
-  const tipAmount = Math.floor((amountMicroStacks * tipPercent) / 100);
-  const totalFunding = amountMicroStacks + baseFee + tipAmount;
+  // The contract deducts fees from `funding-amount` internally.
+  // Pass the total the user will spend so the post-condition matches
+  // the actual stx-transfer inside the contract.
+  const baseMicro = Math.floor(amountStx * STX_PRECISION);
+  const baseFee = Math.floor(baseMicro * 2 / 100);
+  const tipAmount = Math.floor(baseMicro * tipPercent / 100);
+  const totalFunding = baseMicro + baseFee + tipAmount;
 
   const postConditions = [
     {
@@ -58,7 +60,7 @@ export const createTask = async (
       stringAsciiCV(title),
       stringUtf8CV(description),
       githubLink ? someCV(stringAsciiCV(githubLink)) : noneCV(),
-      uintCV(amountMicroStacks),
+      uintCV(totalFunding),
       uintCV(deadlineBlocks), 
       uintCV(0), // TOKEN-STX
       uintCV(tipPercent),
@@ -189,19 +191,19 @@ export const getTask = async (taskId: number) => {
 export const fetchAllTasks = async () => {
   try {
     const counter = await getTaskCounter();
-    const tasks = [];
-    for (let i = 0; i < counter; i++) {
-      const task = await getTask(i);
-      if (task) {
-        // Flatten the task object from JSON structure
+    const results = await Promise.all(
+      Array.from({ length: counter }, (_, i) => getTask(i))
+    );
+    return results
+      .map((task, i) => {
+        if (!task) return null;
         const flattenedTask = Object.entries(task).reduce((acc: any, [key, val]: [string, any]) => {
           acc[key] = val.value !== undefined ? val.value : val;
           return acc;
         }, {});
-        tasks.push({ id: i, ...flattenedTask });
-      }
-    }
-    return tasks;
+        return { id: i, ...flattenedTask };
+      })
+      .filter(Boolean);
   } catch (err) {
     console.error("Error fetching tasks:", err);
     return [];

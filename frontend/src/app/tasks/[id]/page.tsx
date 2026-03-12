@@ -15,7 +15,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
   const taskId = parseInt(id);
   const { isConnected, address, connectWallet } = useStacks();
-  
+
   const [task, setTask] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
@@ -32,7 +32,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
           return acc;
         }, {});
         setTask(flattened);
-        
+
         if (address) {
           const applied = await hasApplied(taskId, address);
           setAlreadyApplied(applied);
@@ -51,7 +51,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
     if (!isConnected) return connectWallet();
     setIsActionLoading(true);
     try {
-      await applyForTask(taskId, 
+      await applyForTask(taskId,
         () => {
           toast.success("Application submitted!");
           loadData();
@@ -119,7 +119,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="min-h-screen pb-20">
       <Navbar />
-      
+
       <main className="pt-32 px-4 mx-auto max-w-4xl">
         <div className="flex flex-col md:flex-row gap-8">
           {/* Main Content */}
@@ -132,9 +132,9 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                  Status ID: {status}
                </span>
             </div>
-            
+
             <h1 className="text-4xl font-bold tracking-tight">{task.title}</h1>
-            
+
             <Card className="border-zinc-800 bg-zinc-950">
               <CardHeader>
                 <CardTitle className="text-xl">Description</CardTitle>
@@ -144,7 +144,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
               </CardContent>
               {task.githubLink && (
                 <CardFooter className="border-t border-zinc-900 pt-6">
-                  <a 
+                  <a
                     href={task.githubLink}
                     target="_blank"
                     rel="noreferrer"
@@ -192,16 +192,16 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
               </CardHeader>
               <CardContent className="space-y-4">
                 {status === 0 && !isCreator && (
-                  <Button 
-                    className="w-full" 
-                    onClick={handleApply} 
+                  <Button
+                    className="w-full"
+                    onClick={handleApply}
                     isLoading={isActionLoading}
                     disabled={alreadyApplied}
                   >
                     {alreadyApplied ? "Already Applied" : "Apply for Bounty"}
                   </Button>
                 )}
-                
+
                 {status === 0 && isCreator && (
                   <div className="space-y-2">
                     <p className="text-xs text-center text-zinc-500">Wait for applicants to assign them work.</p>
@@ -258,7 +258,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                  </div>
               </Card>
             )}
-            
+
             {status === 6 && (
                <Card className="border-red-900 bg-red-950/20 p-4 flex items-center gap-3">
                   <ShieldAlert className="h-5 w-5 text-red-500 shrink-0" />

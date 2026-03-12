@@ -33,15 +33,18 @@ export default function RegisterPage() {
     try {
       await registerUser(
         username,
-        (data) => {
-          toast.success("Registration submitted!");
-          // Pulse check for registration
+        () => {
+          toast.success("Registration submitted! Redirecting in ~15s...");
+          // Stacks blocks confirm ~every 10s. Refresh 3 times then redirect;
+          // the context will reflect registration status on the next page.
+          let attempts = 0;
           const interval = setInterval(async () => {
-             await refreshUserData();
-             if (isRegistered) {
-                clearInterval(interval);
-                router.push("/tasks");
-             }
+            attempts++;
+            await refreshUserData();
+            if (attempts >= 3) {
+              clearInterval(interval);
+              router.push("/tasks");
+            }
           }, 5000);
         },
         () => {
@@ -70,7 +73,7 @@ export default function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="text-left">
           <Card className="border-zinc-800 bg-zinc-950">
-            <CardHeader pb-2>
+            <CardHeader className="pb-2">
               <CardTitle className="text-lg">Username</CardTitle>
               <CardDescription>This will be your identity on Taskify.</CardDescription>
             </CardHeader>

@@ -8,19 +8,30 @@ import { formatSTX, truncateAddress } from "@/lib/utils";
 import { Award, Medal, Share2, Trophy, User, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
+
+interface Stats {
+  totalBounties: number;
+  activeBuilders: number;
+  globalPoolStx: number;
+}
+
 export default function LeaderboardPage() {
   const [builders, setBuilders] = useState<any[]>([]);
+  const [stats, setStats] = useState<Stats>({ totalBounties: 0, activeBuilders: 0, globalPoolStx: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const allTasks = await fetchAllTasks();
-      
-      // Derive builders from completed tasks
+      const [allTasks, leaderboardRes] = await Promise.all([
+        fetchAllTasks(),
+        fetch(`${BACKEND_URL}/api/leaderboard`).then(r => r.ok ? r.json() : []).catch(() => []),
+      ]);
+
+      // Derive builders from completed/approved tasks on-chain
       const builderStats: Record<string, any> = {};
-      
-      allTasks.forEach(task => {
+      allTasks.forEach((task: any) => {
         if (task.assignee && (Number(task.status) === 4 || Number(task.status) === 5)) {
           const addr = task.assignee;
           if (!builderStats[addr]) {
@@ -30,9 +41,20 @@ export default function LeaderboardPage() {
           builderStats[addr].completed += 1;
         }
       });
-      
-      const list = Object.values(builderStats).sort((a, b) => b.earned - a.earned);
+
+      const completedCount = allTasks.filter(
+        (t: any) => Number(t.status) === 4 || Number(t.status) === 5
+      ).length;
+
+      const list = Object.values(builderStats).sort((a: any, b: any) => b.earned - a.earned);
       setBuilders(list);
+      setStats({
+        totalBounties: completedCount,
+        activeBuilders: list.length,
+        globalPoolStx: leaderboardRes.leaderboardStxPool
+          ? Number(leaderboardRes.leaderboardStxPool) / 1e6
+          : 0,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +146,7 @@ export default function LeaderboardPage() {
                   <CardTitle className="text-sm uppercase tracking-widest text-blue-500">Global Pool</CardTitle>
                </CardHeader>
                <CardContent>
-                  <p className="text-3xl font-bold">1,240 <span className="text-lg">STX</span></p>
+                  <p className="text-3xl font-bold">{stats.globalPoolStx.toLocaleString()} <span className="text-lg">STX</span></p>
                   <p className="text-xs text-zinc-500 mt-2">Ready to be distributed</p>
                </CardContent>
             </Card>
@@ -134,7 +156,7 @@ export default function LeaderboardPage() {
                   <CardTitle className="text-sm uppercase tracking-widest text-purple-500">Total Bounties</CardTitle>
                </CardHeader>
                <CardContent>
-                  <p className="text-3xl font-bold">428</p>
+                  <p className="text-3xl font-bold">{stats.totalBounties}</p>
                   <p className="text-xs text-zinc-500 mt-2">Tasks completed on Taskify</p>
                </CardContent>
             </Card>
@@ -144,8 +166,8 @@ export default function LeaderboardPage() {
                   <CardTitle className="text-sm uppercase tracking-widest text-orange-500">Active Builders</CardTitle>
                </CardHeader>
                <CardContent>
-                  <p className="text-3xl font-bold">85</p>
-                  <p className="text-xs text-zinc-500 mt-2">Contributing this week</p>
+                  <p className="text-3xl font-bold">{stats.activeBuilders}</p>
+                  <p className="text-xs text-zinc-500 mt-2">Unique builders with completions</p>
                </CardContent>
             </Card>
         </div>

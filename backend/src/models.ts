@@ -7,15 +7,29 @@ export async function upsertUser(address: string, username: string) {
     );
 }
 
-export async function updateUserDetails(address: string, details: {
+type UserDetails = {
     tasks_created?: number;
     tasks_completed?: number;
     total_stx_funded?: number;
     total_usdcx_funded?: number;
     avg_tip_percent?: number;
-}) {
-    const fields = Object.keys(details).map((key, i) => `${key} = $${i + 2}`).join(', ');
-    const values = Object.values(details);
+};
+
+const ALLOWED_COLUMNS: ReadonlySet<keyof UserDetails> = new Set([
+    'tasks_created',
+    'tasks_completed',
+    'total_stx_funded',
+    'total_usdcx_funded',
+    'avg_tip_percent',
+]);
+
+export async function updateUserDetails(address: string, details: UserDetails) {
+    const entries = (Object.entries(details) as [keyof UserDetails, number | undefined][])
+        .filter(([key, val]) => ALLOWED_COLUMNS.has(key) && val !== undefined);
+    if (entries.length === 0) return;
+
+    const fields = entries.map(([key], i) => `${key} = $${i + 2}`).join(', ');
+    const values = entries.map(([, val]) => val);
     return pool.query(
         `UPDATE users SET ${fields}, last_updated = NOW() WHERE address = $1`,
         [address, ...values]
