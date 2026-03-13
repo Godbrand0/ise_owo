@@ -129,22 +129,32 @@ export const startTask = async (
   });
 };
 
-export const completeTask = async (
+export async function completeTask(
   taskId: number,
-  onFinish: (data: FinishedTxData) => void,
-  onCancel: () => void
-) => {
+  onFinish?: (data: any) => void,
+  onCancel?: () => void
+) {
+  const functionArgs = [uintCV(taskId)];
+
   await openContractCall({
     contractAddress: CONTRACT_ADDRESS,
     contractName: CONTRACT_NAME,
     functionName: "complete-task",
-    functionArgs: [uintCV(taskId)],
+    functionArgs,
     network: NETWORK,
-    appDetails: { name: APP_NAME, icon: APP_ICON },
-    onFinish,
-    onCancel,
+    appDetails: {
+      name: APP_NAME,
+      icon: APP_ICON,
+    },
+    onFinish: (data) => {
+      console.log("Complete Task Transaction:", data);
+      if (onFinish) onFinish(data);
+    },
+    onCancel: () => {
+      if (onCancel) onCancel();
+    },
   });
-};
+}
 
 export const approveAndRelease = async (
   taskId: number,
@@ -162,6 +172,7 @@ export const approveAndRelease = async (
     onCancel,
   });
 };
+
 
 export const getTaskCounter = async () => {
   const result = await fetchCallReadOnlyFunction({

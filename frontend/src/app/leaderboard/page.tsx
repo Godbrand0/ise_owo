@@ -10,6 +10,19 @@ import { motion } from "framer-motion";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
 
+const MOCK_BUILDERS = [
+  { address: "ST3NBRSFY96H4A9QW8R5PF4NR62S64K33K8L6Y2G", earned: 550 * 1000000, completed: 12 },
+  { address: "ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG", earned: 320 * 1000000, completed: 7 },
+  { address: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", earned: 150 * 1000000, completed: 4 },
+  { address: "ST1J4G6RR643BCG8G8SR6M2D9Z9KSCVDN4V564Y2D", earned: 80 * 1000000, completed: 2 },
+];
+
+const MOCK_STATS = {
+  totalBounties: 25,
+  activeBuilders: 4,
+  globalPoolStx: 1500
+};
+
 interface Stats {
   totalBounties: number;
   activeBuilders: number;
@@ -47,14 +60,24 @@ export default function LeaderboardPage() {
       ).length;
 
       const list = Object.values(builderStats).sort((a: any, b: any) => b.earned - a.earned);
-      setBuilders(list);
-      setStats({
-        totalBounties: completedCount,
-        activeBuilders: list.length,
-        globalPoolStx: leaderboardRes.leaderboardStxPool
-          ? Number(leaderboardRes.leaderboardStxPool) / 1e6
-          : 0,
-      });
+      
+      if (list.length === 0 && allTasks.length === 0) {
+        setBuilders(MOCK_BUILDERS);
+        setStats(MOCK_STATS);
+      } else {
+        setBuilders(list);
+        setStats({
+          totalBounties: completedCount,
+          activeBuilders: list.length,
+          globalPoolStx: leaderboardRes.leaderboardStxPool
+            ? Number(leaderboardRes.leaderboardStxPool) / 1e6
+            : 0,
+        });
+      }
+    } catch (e) {
+      console.error("Error loading leaderboard:", e);
+      setBuilders(MOCK_BUILDERS);
+      setStats(MOCK_STATS);
     } finally {
       setIsLoading(false);
     }

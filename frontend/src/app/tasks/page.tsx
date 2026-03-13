@@ -9,6 +9,83 @@ import { formatSTX, truncateAddress } from "@/lib/utils";
 import { Clock, ExternalLink, RefreshCw, Search, Tag } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { STX_PRECISION } from "@/lib/constants";
+
+export const MOCK_TASKS = [
+  {
+    id: "mock-1",
+    title: "Implement landing page design",
+    description: "Create a modern, responsive landing page using Next.js and Tailwind CSS. The design should be clean, professional, and mobile-friendly.",
+    status: 0,
+    fundingAmount: 50 * STX_PRECISION,
+    creator: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+    assignee: null,
+    githubLink: "https://github.com/example/landing-page",
+    deadline: Date.now() + 7 * 24 * 60 * 60 * 1000,
+    createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000, 
+    applications: [
+      {
+        applicant: "ST3NBRSFY96H4A9QW8R5PF4NR62S64K33K8L6Y2G",
+        proposal: "I have 5 years of experience with Next.js and Tailwind. I can deliver a high-quality, responsive landing page in exactly 4 days. Here is my portfolio: example.com",
+        date: Date.now() - 1 * 24 * 60 * 60 * 1000
+      },
+      {
+        applicant: "ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG",
+        proposal: "Ready to start immediately. I've built similar landing pages for Web3 projects before.",
+        date: Date.now() - 12 * 60 * 60 * 1000
+      }
+    ]
+  },
+  {
+    id: "mock-2",
+    title: "Write documentation for Stacks API",
+    description: "Prepare comprehensive documentation for the core API endpoints of the Stacks blockchain. Cover authentication, data retrieval, and transaction broadcasting.",
+    status: 1,
+    fundingAmount: 25 * STX_PRECISION,
+    creator: "ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG",
+    assignee: "ST3NBRSFY96H4A9QW8R5PF4NR62S64K33K8L6Y2G",
+    githubLink: "https://github.com/example/stacks-docs",
+    deadline: Date.now() + 14 * 24 * 60 * 60 * 1000, // 14 days from now
+    createdAt: Date.now() - 5 * 24 * 60 * 60 * 1000,
+  },
+  {
+    id: "mock-3",
+    title: "Bug fix: Wallet connection issue",
+    description: "Investigate and resolve the reported bug in the Hiro wallet connection flow where the address is not being correctly displayed after a successful connection.",
+    status: 2,
+    fundingAmount: 15 * STX_PRECISION,
+    creator: "ST3NBRSFY96H4A9QW8R5PF4NR62S64K33K8L6Y2G",
+    assignee: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+    githubLink: null,
+    deadline: Date.now() + 2 * 24 * 60 * 60 * 1000, // 2 days from now
+    createdAt: Date.now() - 1 * 24 * 60 * 60 * 1000,
+  },
+  {
+    id: "mock-4",
+    title: "Integrate Pyth price feeds",
+    description: "Add Pyth oracle price feeds to the taskify contract to display task USD values in real-time. Ensure proper error handling for feed failures.",
+    status: 0,
+    fundingAmount: 100 * STX_PRECISION,
+    creator: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+    assignee: null,
+    githubLink: "https://github.com/example/pyth-integration",
+    deadline: Date.now() + 10 * 24 * 60 * 60 * 1000,
+    createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000,
+    applications: []
+  },
+  {
+    id: "mock-5",
+    title: "Create Taskify mobile app prototype",
+    description: "Design and build a functional mobile app prototype using React Native. Focus on the bounty browsing and submission management screens.",
+    status: 3,
+    fundingAmount: 200 * STX_PRECISION,
+    creator: "ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG",
+    assignee: "ST3NBRSFY96H4A9QW8R5PF4NR62S64K33K8L6Y2G",
+    githubLink: "https://github.com/example/taskify-mobile",
+    deadline: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days from now
+    createdAt: Date.now() - 10 * 24 * 60 * 60 * 1000,
+  },
+];
 
 const statusMap: Record<number, string> = {
   0: "Created",
@@ -41,8 +118,12 @@ export default function TasksPage() {
     setIsLoading(true);
     try {
       const data = await fetchAllTasks();
-      // Reverse to show latest first
-      setTasks(data.reverse());
+      // Combine real tasks with mock data for display
+      // Real tasks first, then mock tasks
+      setTasks([...data.reverse(), ...MOCK_TASKS]);
+    } catch (e) {
+      console.error("Error loading tasks:", e);
+      setTasks(MOCK_TASKS);
     } finally {
       setIsLoading(false);
     }

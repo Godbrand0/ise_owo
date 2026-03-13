@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { AppConfig, UserSession, showConnect, UserData } from "@stacks/connect";
+import { AppConfig, UserSession, authenticate, UserData } from "@stacks/connect";
 import { uintCV, fetchCallReadOnlyFunction, cvToJSON, principalCV } from "@stacks/transactions";
 import { StacksNetwork } from "@stacks/network";
 import { APP_NAME, APP_ICON, NETWORK, CONTRACT_ADDRESS, CONTRACT_NAME } from "../lib/constants";
@@ -13,6 +13,10 @@ interface StacksContextType {
   isConnected: boolean;
   isRegistered: boolean;
   userProfile: any | null;
+  githubLinked: boolean;
+  setGithubLinked: (val: boolean) => void;
+  userRole: "creator" | "contributor" | null;
+  setUserRole: (role: "creator" | "contributor" | null) => void;
   connectWallet: () => void;
   disconnectWallet: () => void;
   network: StacksNetwork;
@@ -25,6 +29,8 @@ export function StacksProvider({ children }: { children: ReactNode }) {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isRegistered, setIsRegistered] = useState(false);
   const [userProfile, setUserProfile] = useState<any | null>(null);
+  const [githubLinked, setGithubLinked] = useState(false);
+  const [userRole, setUserRole] = useState<"creator" | "contributor" | null>(null);
   const [isMounted, setIsMounted] = useState(false);
 
   const appConfig = new AppConfig(["store_write", "publish_data"]);
@@ -32,10 +38,17 @@ export function StacksProvider({ children }: { children: ReactNode }) {
 
   // Prefer the address that matches the configured network so we don't send
   // a mainnet SP... address to a testnet contract (or vice versa).
-  const isMainnet = (NETWORK as any).isMainnet?.() ?? false;
-  const address = isMainnet
-    ? (userData?.profile?.stxAddress?.mainnet ?? null)
-    : (userData?.profile?.stxAddress?.testnet ?? userData?.profile?.stxAddress?.mainnet ?? null);
+  const address = (userData?.profile?.stxAddress?.testnet || 
+                   userData?.profile?.stxAddress?.mainnet || 
+                   (typeof userData?.profile?.stxAddress === "string" ? userData.profile.stxAddress : null) ||
+                   (userData as any)?.stxAddress ||
+                   null);
+
+  console.log("Stacks Session State:", { 
+    isConnected: !!userData, 
+    address, 
+    stxAddressObj: userData?.profile?.stxAddress 
+  });
 
   const refreshUserData = async () => {
     if (!address) return;
@@ -80,17 +93,18 @@ export function StacksProvider({ children }: { children: ReactNode }) {
   }, [address]);
 
   const connectWallet = () => {
-    showConnect({
+    authenticate({
       appDetails: {
         name: APP_NAME,
         icon: APP_ICON,
       },
-      redirectTo: "/",
-      onFinish: () => {
-        const data = userSession.loadUserData();
-        setUserData(data);
-      },
       userSession,
+      onFinish: (data) => {
+        setUserData(data.userSession.loadUserData());
+      },
+      onCancel: () => {
+        console.log("User cancelled connection");
+      },
     });
   };
 
@@ -99,6 +113,8 @@ export function StacksProvider({ children }: { children: ReactNode }) {
     setUserData(null);
     setIsRegistered(false);
     setUserProfile(null);
+    setGithubLinked(false);
+    setUserRole(null);
     window.location.reload();
   };
 
@@ -109,6 +125,10 @@ export function StacksProvider({ children }: { children: ReactNode }) {
     isConnected: !!userData,
     isRegistered,
     userProfile,
+    githubLinked,
+    setGithubLinked,
+    userRole,
+    setUserRole,
     connectWallet,
     disconnectWallet,
     network: NETWORK,
