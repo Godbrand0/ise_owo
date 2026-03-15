@@ -2,19 +2,24 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import insightsRouter from './routes/insights.js';
+import userRouter from './routes/user.js';
 import { syncBlockchainData } from './services/sync.js';
 import { updateLeaderboard } from './services/scoring.js';
 dotenv.config();
 const app = express();
-const port = process.env.PORT || 3001;
-app.use(cors());
+const port = process.env.PORT ?? 4000;
+app.use(cors({
+    origin: process.env.NODE_ENV === 'production'
+        ? process.env.CORS_ORIGIN ?? false
+        : true,
+    credentials: true,
+}));
 app.use(express.json());
-// Main health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
-// Trigger sync manually
-app.post('/api/sync', async (req, res) => {
+// Manually trigger a blockchain sync + leaderboard refresh
+app.post('/api/sync', async (_req, res) => {
     try {
         await syncBlockchainData();
         await updateLeaderboard();
@@ -25,13 +30,15 @@ app.post('/api/sync', async (req, res) => {
         res.status(500).json({ error: 'Sync failed' });
     }
 });
-// AI Insights Routes
 app.use('/api', insightsRouter);
+app.use('/api', userRouter);
 app.listen(port, () => {
     console.log(`Taskify Backend listening at http://localhost:${port}`);
-    // Optional: Initial sync on startup
-    if (process.env.INITIAL_SYNC === 'true') {
-        syncBlockchainData().then(() => updateLeaderboard());
-    }
+    // Refresh leaderboard scores every 5 minutes
+    setInterval(() => {
+        syncBlockchainData()
+            .then(() => updateLeaderboard())
+            .catch((err) => console.error('Periodic sync error:', err));
+    }, 5 * 60 * 1000);
 });
 //# sourceMappingURL=index.js.map

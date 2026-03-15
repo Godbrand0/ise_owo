@@ -21,36 +21,52 @@ export default function RegisterPage() {
     refreshUserData,
     githubLinked,
     setGithubLinked,
+    verifiedGithubUsername,
+    setVerifiedGithubUsername,
     userRole,
     setUserRole
   } = useStacks();
   
   const router = useRouter();
   const [username, setUsername] = useState("");
+  const [githubInput, setGithubInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);
 
-  // Auto-advance if wallet already connected when landing on step 1
+  // Auto-advance if registered
   useEffect(() => {
-    if (isConnected && step === 1) {
-      setStep(2);
+    if (isRegistered) {
+      router.push("/tasks");
     }
-  }, [isConnected, step]);
+  }, [isRegistered, router]);
 
-  if (isRegistered) {
-     router.push("/tasks");
-     return null;
-  }
+  // Auto-advance if wallet already connected when landing on step 1
 
-  const handleSimulateGithubAuth = () => {
+  const handleVerifyGithubProfile = async () => {
+// ... existing handleVerifyGithubProfile ...
+    if (!githubInput.trim()) {
+      toast.error("Please enter your GitHub username.");
+      return;
+    }
+
     setIsLoading(true);
-    // Simulate OAuth delay
-    setTimeout(() => {
-      setGithubLinked(true);
+    try {
+      const response = await fetch(`https://api.github.com/users/${githubInput.trim()}`);
+      if (response.ok) {
+        const data = await response.json();
+        setVerifiedGithubUsername(data.login);
+        setGithubLinked(true);
+        setStep(3);
+        toast.success(`GitHub account @${data.login} verified!`);
+      } else {
+        toast.error("GitHub user not found. Please check the spelling.");
+      }
+    } catch (err) {
+      console.error("GitHub check error:", err);
+      toast.error("Failed to connect to GitHub. Try again later.");
+    } finally {
       setIsLoading(false);
-      setStep(3);
-      toast.success("GitHub account successfully linked.");
-    }, 1500);
+    }
   };
 
   const handleRoleSelection = (role: "creator" | "contributor") => {
@@ -58,6 +74,7 @@ export default function RegisterPage() {
     setStep(4);
   };
 
+// ... (handleSubmit starts here) ...
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isConnected) {
@@ -67,15 +84,39 @@ export default function RegisterPage() {
 
     setIsLoading(true);
     try {
+      // 1. Initiate on-chain registration
       await registerUser(
         username,
-        () => {
-          toast.success("Registration submitted! Redirecting in ~15s...");
+        async () => {
+          toast.success("Transaction submitted to blockchain!");
+          
+          // 2. Save off-chain metadata to our backend
+          try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000"}/api/users`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                address,
+                username,
+                github_username: verifiedGithubUsername,
+                role: userRole
+              })
+            });
+            
+            if (res.ok) {
+              toast.success("Profile metadata saved!");
+            }
+          } catch (err) {
+            console.error("Failed to save metadata to backend:", err);
+          }
+
+          // 3. Wait for confirmation and redirect
+          toast.success("Waiting for block confirmation...");
           let attempts = 0;
           const interval = setInterval(async () => {
             attempts++;
             await refreshUserData();
-            if (attempts >= 3) {
+            if (attempts >= 4) {
               clearInterval(interval);
               router.push("/tasks");
             }
@@ -140,26 +181,34 @@ export default function RegisterPage() {
               <div className="inline-flex h-24 w-24 items-center justify-center rounded-full bg-zinc-900 border-4 border-zinc-800 mb-8 mx-auto">
                  <Github className="h-12 w-12 text-zinc-100" />
               </div>
-              <h1 className="text-4xl font-extrabold tracking-tight mb-4">Link GitHub</h1>
+              <h1 className="text-4xl font-extrabold tracking-tight mb-4">Verify GitHub</h1>
               <p className="text-lg text-zinc-400 mb-10 max-w-md mx-auto">
-                Connect your GitHub to import your reputation, automatically sync PRs, and build trust as a developer.
+                Enter your GitHub handle to import your identity and build trust as a developer.
               </p>
               
               <div className="space-y-4 max-w-sm mx-auto">
+                <Input 
+                  placeholder="Your GitHub username (e.g. octocat)"
+                  value={githubInput}
+                  onChange={(e) => setGithubInput(e.target.value)}
+                  className="h-14 text-center text-lg bg-zinc-900 border-zinc-800 rounded-xl"
+                />
                 <Button 
                   size="lg" 
-                  className="w-full h-14 text-lg font-bold rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 flex items-center gap-3" 
-                  onClick={handleSimulateGithubAuth}
+                  className="w-full h-14 text-lg font-bold rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 flex items-center justify-center gap-3" 
+                  onClick={handleVerifyGithubProfile}
                   isLoading={isLoading}
                 >
-                  <Github className="h-5 w-5" /> {isLoading ? "Connecting..." : "Authorize with GitHub"}
+                  <Github className="h-5 w-5" /> {isLoading ? "Verifying..." : "Verify GitHub Account"}
                 </Button>
-                <button 
-                  onClick={() => setStep(3)} 
-                  className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors font-medium"
-                >
-                  Skip for now
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button 
+                    onClick={() => setStep(3)} 
+                    className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors font-medium"
+                  >
+                    Skip for now
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
@@ -250,7 +299,12 @@ export default function RegisterPage() {
                        <div className="flex items-center justify-between text-xs">
                           <span className="text-zinc-500 font-bold uppercase tracking-wider">GitHub</span>
                           <span className="font-mono text-zinc-300 flex items-center gap-1.5">
-                            {githubLinked ? <><CheckCircle2 className="h-3 w-3 text-green-500"/> Linked</> : "Skipped"}
+                            {verifiedGithubUsername ? (
+                              <>
+                                <CheckCircle2 className="h-3 w-3 text-green-500"/> 
+                                <span className="text-orange-500">@{verifiedGithubUsername}</span>
+                              </>
+                            ) : "Skipped"}
                           </span>
                        </div>
                        <div className="flex items-center justify-between text-xs">

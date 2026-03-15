@@ -7,7 +7,7 @@ export const APP_ICON = "/favicon.ico";
 export const NETWORK = createNetwork("testnet");
 
 // Contract info - using placeholder if not deployed yet
-export const CONTRACT_ADDRESS = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"; // Replace with your testnet address
+export const CONTRACT_ADDRESS = "ST19XTHQ3SVST2NCYPTHP2W31MFDQDBFG3W5VFJ8Z"; // Newly deployed testnet address
 export const CONTRACT_NAME = "taskify";
 export const CONTRACT_IDENTIFIER = `${CONTRACT_ADDRESS}.${CONTRACT_NAME}`;
 

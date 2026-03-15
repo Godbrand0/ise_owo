@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import express from 'express';
-import pool from '../db.js';
+import { supabase } from '../db.js';
 
 const router = express.Router();
 const client = new Anthropic({
@@ -12,78 +12,99 @@ const ADDRESS_RE = /^S[A-Z0-9]{30,50}$/;
 
 // Helper for caching
 async function getCachedInsight(key: string): Promise<string | null> {
-    const res = await pool.query(
-        'SELECT insight FROM insights_cache WHERE cache_key = $1 AND expires_at > NOW()',
-        [key]
-    );
-    return res.rows[0]?.insight ?? null;
+    const { data, error } = await supabase
+        .from('insights_cache')
+        .select('insight')
+        .eq('cache_key', key)
+        .gt('expires_at', new Date().toISOString())
+        .single();
+    
+    if (error) return null;
+    return data?.insight ?? null;
 }
 
 async function cacheInsight(key: string, insight: string): Promise<void> {
     const expiresAt = new Date();
     expiresAt.setMonth(expiresAt.getMonth() + 1); // 1 month TTL
-    await pool.query(
-        'INSERT INTO insights_cache (cache_key, insight, expires_at) VALUES ($1, $2, $3) ON CONFLICT (cache_key) DO UPDATE SET insight = $2, expires_at = $3',
-        [key, insight, expiresAt]
-    );
+    
+    await supabase.from('insights_cache').upsert({
+        cache_key: key,
+        insight,
+        expires_at: expiresAt.toISOString()
+    }, { onConflict: 'cache_key' });
 }
 
 // Real DB fetchers
 
 const fetchMonthlyDataFromDB = async (month: string) => {
     // Tasks created this month from tasks_metadata
-    const tasksRes = await pool.query(
-        `SELECT COUNT(*) AS tasks_created FROM tasks_metadata WHERE TO_CHAR(created_at, 'YYYY-MM') = $1`,
-        [month]
-    );
+    // Note: This relies on simple filter. For complex date logic, we might need a custom RPC or view.
+    const { count: tasksCreated } = await supabase
+        .from('tasks_metadata')
+        .select('*', { count: 'exact', head: true })
+        .filter('created_at', 'gte', `${month}-01`)
+        .filter('created_at', 'lt', `${parseInt(month.split('-')[1]) === 12 ? (parseInt(month.split('-')[0]) + 1) + '-01' : month.split('-')[0] + '-' + (parseInt(month.split('-')[1]) + 1).toString().padStart(2, '0')}-01`);
 
     // Aggregate platform-wide user stats
-    const statsRes = await pool.query(`
-        SELECT
-            COALESCE(SUM(tasks_completed), 0)      AS tasks_completed,
-            COALESCE(SUM(total_stx_funded), 0)     AS total_stx_funded,
-            COALESCE(SUM(total_usdcx_funded), 0)   AS total_usdcx_funded,
-            COUNT(*)                                AS unique_creators
-        FROM users
-    `);
+    const { data: users } = await supabase
+        .from('users')
+        .select('tasks_completed, total_stx_funded, total_usdcx_funded');
 
-    const topRes = await pool.query(
-        'SELECT username FROM users ORDER BY current_score DESC LIMIT 1'
-    );
+    const stats = (users || []).reduce((acc, user) => {
+        acc.tasks_completed += user.tasks_completed || 0;
+        acc.total_stx_funded += Number(user.total_stx_funded) || 0;
+        acc.total_usdcx_funded += Number(user.total_usdcx_funded) || 0;
+        return acc;
+    }, { tasks_completed: 0, total_stx_funded: 0, total_usdcx_funded: 0 });
 
-    const stats = statsRes.rows[0];
+    const { data: topUser } = await supabase
+        .from('users')
+        .select('username')
+        .order('current_score', { ascending: false })
+        .limit(1)
+        .single();
+
     return {
-        tasksCreated: parseInt(tasksRes.rows[0].tasks_created),
-        tasksCompleted: parseInt(stats.tasks_completed),
-        totalStxFunded: parseInt(stats.total_stx_funded),
-        totalUsdcxFunded: parseInt(stats.total_usdcx_funded),
-        uniqueCreators: parseInt(stats.unique_creators),
-        uniqueContributors: 0, // tracked on-chain; not yet mirrored off-chain
-        topCreator: { username: topRes.rows[0]?.username ?? 'N/A' },
-        momGrowth: 0, // requires historical snapshots — not yet implemented
+        tasksCreated: tasksCreated || 0,
+        tasksCompleted: stats.tasks_completed,
+        totalStxFunded: stats.total_stx_funded,
+        totalUsdcxFunded: stats.total_usdcx_funded,
+        uniqueCreators: users?.length || 0,
+        uniqueContributors: 0, 
+        topCreator: { username: topUser?.username ?? 'N/A' },
+        momGrowth: 0,
     };
 };
 
 const fetchCreatorDataFromDB = async (address: string, _month: string) => {
-    const userRes = await pool.query('SELECT * FROM users WHERE address = $1', [address]);
-    if (!userRes.rows.length) throw new Error(`User not found: ${address}`);
-    const user = userRes.rows[0];
+    const { data: user, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('address', address)
+        .single();
+
+    if (error || !user) throw new Error(`User not found: ${address}`);
 
     // Rank: number of users with a higher score + 1
-    const rankRes = await pool.query(
-        'SELECT COUNT(*) + 1 AS rank FROM users WHERE current_score > $1',
-        [user.current_score]
-    );
-    const totalRes = await pool.query('SELECT COUNT(*) AS total FROM users');
+    const { count: higherCount } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .gt('current_score', user.current_score);
+    
+    const { count: totalCount } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true });
 
     // Score gap to the user directly above
-    const aboveRes = await pool.query(
-        'SELECT current_score FROM users WHERE current_score > $1 ORDER BY current_score ASC LIMIT 1',
-        [user.current_score]
-    );
-    const scoreGap = aboveRes.rows.length
-        ? aboveRes.rows[0].current_score - user.current_score
-        : 0;
+    const { data: aboveUser } = await supabase
+        .from('users')
+        .select('current_score')
+        .gt('current_score', user.current_score)
+        .order('current_score', { ascending: true })
+        .limit(1)
+        .single();
+
+    const scoreGap = aboveUser ? aboveUser.current_score - user.current_score : 0;
 
     return {
         username: user.username as string,
@@ -92,23 +113,31 @@ const fetchCreatorDataFromDB = async (address: string, _month: string) => {
         totalStx: user.total_stx_funded as number,
         totalUsdcx: user.total_usdcx_funded as number,
         avgTipPercent: parseFloat(user.avg_tip_percent),
-        rank: parseInt(rankRes.rows[0].rank),
-        totalCreators: parseInt(totalRes.rows[0].total),
-        prevRank: 0, // requires historical snapshots — not yet implemented
+        rank: (higherCount || 0) + 1,
+        totalCreators: totalCount || 0,
+        prevRank: 0,
         scoreGap,
     };
 };
 
 const fetchPlatformAverages = async (_month: string) => {
-    const res = await pool.query(`
-        SELECT
-            COALESCE(AVG(tasks_created), 0)    AS avg_tasks,
-            COALESCE(AVG(avg_tip_percent), 0)  AS avg_tip
-        FROM users
-    `);
+    const { data: users } = await supabase
+        .from('users')
+        .select('tasks_created, avg_tip_percent');
+
+    if (!users || users.length === 0) {
+        return { avgTasks: 0, avgTip: 0 };
+    }
+
+    const total = users.reduce((acc, user) => {
+        acc.avgTasks += user.tasks_created || 0;
+        acc.avgTip += parseFloat(user.avg_tip_percent) || 0;
+        return acc;
+    }, { avgTasks: 0, avgTip: 0 });
+
     return {
-        avgTasks: parseFloat(res.rows[0].avg_tasks),
-        avgTip: parseFloat(res.rows[0].avg_tip),
+        avgTasks: total.avgTasks / users.length,
+        avgTip: total.avgTip / users.length,
     };
 };
 

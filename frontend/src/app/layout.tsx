@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { StacksProvider } from "../context/StacksContext";
 import { Toaster } from "react-hot-toast";
 
-const inter = Inter({ subsets: ["latin"] });
+// Using system font stack to avoid build-time network issues with Google Fonts
+const interClassName = "font-sans";
 
 export const metadata: Metadata = {
   title: "Taskify | Decentralized Bounty Board",
@@ -18,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} bg-zinc-950 text-zinc-50 antialiased`}>
+      <body className={`${interClassName} bg-zinc-950 text-zinc-50 antialiased`}>
         <StacksProvider>
           {children}
           <Toaster position="bottom-right" />

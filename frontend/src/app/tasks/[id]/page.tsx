@@ -4,8 +4,8 @@ import { use, useEffect, useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { getTask, applyForTask, startTask, completeTask, approveAndRelease, hasApplied, assignTask } from "@/lib/contract";
-import { formatSTX, truncateAddress, formatDate } from "@/lib/utils";
+import { getTask, applyForTask, startTask, completeTask, approveAndRelease, hasApplied, assignTask, cancelTask, reclaimFunds } from "@/lib/contract";
+import { formatSTX, truncateAddress, formatDate, unwrapCV } from "@/lib/utils";
 import { useStacks } from "@/context/StacksContext";
 import { toast } from "react-hot-toast";
 import { 
@@ -17,10 +17,11 @@ import {
   Calendar,
   ExternalLink,
   ChevronRight,
-  MessageSquare
+  MessageSquare,
+  Ban,
+  RotateCcw
 } from "lucide-react";
 import Link from "next/link";
-import { MOCK_TASKS } from "../page";
 
 const STAGES = [
   { id: 0, name: "Created", description: "Bounty is open for applications" },
@@ -33,7 +34,7 @@ const STAGES = [
 export default function TaskDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const taskId = id.startsWith("mock-") ? id : parseInt(id);
-  const { isConnected, address, connectWallet } = useStacks();
+  const { isConnected, address, connectWallet, userRole } = useStacks();
 
   const [task, setTask] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,13 +46,6 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
   const loadData = async () => {
     setIsLoading(true);
     try {
-      if (typeof taskId === "string" && taskId.startsWith("mock-")) {
-        const mockTask = MOCK_TASKS.find(t => t.id === taskId);
-        setTask(mockTask);
-        setIsLoading(false);
-        return;
-      }
-
       const taskData = await getTask(taskId as number);
       if (taskData) {
         const flattened = Object.entries(taskData).reduce((acc: any, [key, val]: [string, any]) => {
@@ -65,14 +59,9 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
           const applied = await hasApplied(taskId as number, address);
           setAlreadyApplied(applied);
         }
-      } else {
-        const mockTask = MOCK_TASKS.find(t => t.id === `mock-${taskId}`);
-        if (mockTask) setTask(mockTask);
       }
     } catch (e) {
       console.error("Error loading task detail:", e);
-      const mockTask = MOCK_TASKS.find(t => t.id === (typeof taskId === "string" ? taskId : `mock-${taskId}`));
-      if (mockTask) setTask(mockTask);
     } finally {
       setIsLoading(false);
     }
@@ -97,18 +86,6 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
       await applyForTask(taskId as number,
         () => {
           toast.success("Application submitted!");
-          
-          // Locally update mock state for demonstration
-          if (typeof taskId === "string") {
-            setTask((prev: any) => ({
-              ...prev,
-              applications: [
-                ...prev.applications,
-                { applicant: address, proposal: proposalText, date: Date.now() }
-              ]
-            }));
-          }
-          
           setShowApplyForm(false);
           setAlreadyApplied(true);
           setIsActionLoading(false);
@@ -130,17 +107,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
       await assignTask(taskId as number, applicantAddress,
         () => {
           toast.success("Bounty successfully assigned!");
-          
-          // Locally update mock state for demonstration
-          if (typeof taskId === "string") {
-             setTask((prev: any) => ({
-                 ...prev,
-                 status: 1,
-                 assignee: applicantAddress
-             }));
-          } else {
-             loadData();
-          }
+          loadData();
           setIsActionLoading(false);
         },
         () => {
@@ -159,22 +126,16 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
     try {
       const onFinish = () => {
         toast.success(`${action} successful!`);
-        if (typeof taskId === "string") {
-           // Local mock update
-           setTask((prev: any) => ({
-              ...prev,
-              status: action === "start" ? 2 : action === "complete" ? 3 : 5
-           }));
-        } else {
-           loadData();
-        }
+        loadData();
         setIsActionLoading(false);
       };
       const onCancel = () => setIsActionLoading(false);
 
       if (action === "start") await startTask(taskId as number, onFinish, onCancel);
       if (action === "complete") await completeTask(taskId as number, onFinish, onCancel);
-      if (action === "approve") await approveAndRelease(taskId as number, onFinish, onCancel);
+      if (action === "approve") await approveAndRelease(taskId as number, Number(task.tokenType), onFinish, onCancel);
+      if (action === "cancel") await cancelTask(taskId as number, Number(task.tokenType), onFinish, onCancel);
+      if (action === "reclaim") await reclaimFunds(taskId as number, Number(task.tokenType), onFinish, onCancel);
     } catch (e) {
       toast.error(`Failed to ${action}`);
       setIsActionLoading(false);
@@ -204,7 +165,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
     );
   }
 
-  const isCreator = address === task.creator;
+  const isCreator = address === task.creator || userRole === "creator";
   const isAssignee = address === task.assignee;
   const status = Number(task.status);
   
@@ -478,6 +439,31 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                       <Button className="w-full h-14 text-lg font-bold rounded-2xl bg-green-600 hover:bg-green-500" onClick={() => handleAction("approve")} isLoading={isActionLoading}>
                         Approve & Release
                       </Button>
+                    )}
+
+                    {/* Creator Actions: Cancel & Reclaim */}
+                    {isCreator && (
+                      <div className="mt-4 space-y-3">
+                        {(status === 0 || status === 1 || status === 2) && (
+                          <Button 
+                            variant="outline" 
+                            className="w-full h-12 rounded-xl text-red-500 border-red-500/20 hover:bg-red-500/10 gap-2" 
+                            onClick={() => handleAction("cancel")} 
+                            isLoading={isActionLoading}
+                          >
+                            <Ban className="h-4 w-4" /> Cancel Bounty
+                          </Button>
+                        )}
+                        {status === 6 && (
+                          <Button 
+                            className="w-full h-14 text-lg font-bold rounded-2xl bg-red-600 hover:bg-red-500 shadow-lg shadow-red-900/20 gap-2" 
+                            onClick={() => handleAction("reclaim")} 
+                            isLoading={isActionLoading}
+                          >
+                            <RotateCcw className="h-5 w-5" /> Reclaim Funds
+                          </Button>
+                        )}
+                      </div>
                     )}
 
                     {status === 5 && (

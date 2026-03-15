@@ -7,6 +7,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { ArrowRight, Code, Layout, Share2, ShieldCheck, Zap } from "lucide-react";
 import Link from "next/link";
 import { useStacks } from "../context/StacksContext";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 const features = [
   {
@@ -33,7 +35,18 @@ const features = [
 ];
 
 export default function Home() {
-  const { isConnected, connectWallet } = useStacks();
+  const { isConnected, connectWallet, isRegistered } = useStacks();
+  const router = useRouter();
+
+  useEffect(() => {
+    // If we land here and user is not registered, send to onboarding
+    // We only do this if they haven't connected yet OR they are connected but not registered
+    // Actually, the request says "make /register the first page a new user sees"
+    // So if they are not registered, they should go there.
+    if (!isRegistered) {
+      router.push("/register");
+    }
+  }, [isRegistered, router]);
 
   return (
     <div className="min-h-screen">
@@ -68,9 +81,11 @@ export default function Home() {
                       </Button>
                     </Link>
                   ) : (
-                    <Button size="lg" onClick={connectWallet} className="gap-2">
-                      Get Started <ArrowRight className="h-5 w-5" />
-                    </Button>
+                    <Link href="/register">
+                      <Button size="lg" className="gap-2">
+                        Get Started <ArrowRight className="h-5 w-5" />
+                      </Button>
+                    </Link>
                   )}
                   <Link href="/tasks">
                     <Button size="lg" variant="outline">

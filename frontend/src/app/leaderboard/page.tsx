@@ -5,23 +5,12 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { fetchAllTasks } from "@/lib/contract";
 import { formatSTX, truncateAddress } from "@/lib/utils";
-import { Award, Medal, Share2, Trophy, User, Zap } from "lucide-react";
+import { Trophy, Users, BarChart, ExternalLink, ArrowUpRight, Search } from "lucide-react";
 import { motion } from "framer-motion";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import Link from "next/link"; // Added for the new JSX structure
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
-
-const MOCK_BUILDERS = [
-  { address: "ST3NBRSFY96H4A9QW8R5PF4NR62S64K33K8L6Y2G", earned: 550 * 1000000, completed: 12 },
-  { address: "ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG", earned: 320 * 1000000, completed: 7 },
-  { address: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", earned: 150 * 1000000, completed: 4 },
-  { address: "ST1J4G6RR643BCG8G8SR6M2D9Z9KSCVDN4V564Y2D", earned: 80 * 1000000, completed: 2 },
-];
-
-const MOCK_STATS = {
-  totalBounties: 25,
-  activeBuilders: 4,
-  globalPoolStx: 1500
-};
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000";
 
 interface Stats {
   totalBounties: number;
@@ -41,43 +30,40 @@ export default function LeaderboardPage() {
         fetchAllTasks(),
         fetch(`${BACKEND_URL}/api/leaderboard`).then(r => r.ok ? r.json() : []).catch(() => []),
       ]);
+      
+      // Calculate basic stats
+      const totalBounties = allTasks.length;
+      const activeBuilders = new Set(allTasks.filter((t: any) => t.assignee).map((t: any) => t.assignee)).size;
+      const globalPool = allTasks.reduce((acc: number, t: any) => acc + Number(t.fundingAmount), 0);
 
-      // Derive builders from completed/approved tasks on-chain
-      const builderStats: Record<string, any> = {};
-      allTasks.forEach((task: any) => {
-        if (task.assignee && (Number(task.status) === 4 || Number(task.status) === 5)) {
-          const addr = task.assignee;
-          if (!builderStats[addr]) {
-            builderStats[addr] = { address: addr, earned: 0, completed: 0 };
-          }
-          builderStats[addr].earned += Number(task.fundingAmount);
-          builderStats[addr].completed += 1;
-        }
+      setStats({
+        totalBounties,
+        activeBuilders,
+        globalPoolStx: globalPool,
       });
 
-      const completedCount = allTasks.filter(
-        (t: any) => Number(t.status) === 4 || Number(t.status) === 5
-      ).length;
-
-      const list = Object.values(builderStats).sort((a: any, b: any) => b.earned - a.earned);
-      
-      if (list.length === 0 && allTasks.length === 0) {
-        setBuilders(MOCK_BUILDERS);
-        setStats(MOCK_STATS);
+      // Format leaders
+      if (leaderboardRes.length > 0) {
+        setBuilders(leaderboardRes);
       } else {
-        setBuilders(list);
-        setStats({
-          totalBounties: completedCount,
-          activeBuilders: list.length,
-          globalPoolStx: leaderboardRes.leaderboardStxPool
-            ? Number(leaderboardRes.leaderboardStxPool) / 1e6
-            : 0,
+        // Derive from allTasks if backend is empty
+        const contributors: Record<string, any> = {};
+        allTasks.forEach((t: any) => {
+          if (t.assignee) {
+            if (!contributors[t.assignee]) contributors[t.assignee] = { address: t.assignee, score: 0, tasks_completed: 0 };
+            if (t.status === 5) {
+              contributors[t.assignee].tasks_completed += 1;
+              contributors[t.assignee].score += 100;
+            }
+          }
         });
+        setBuilders(Object.values(contributors).sort((a, b) => b.score - a.score));
       }
+
     } catch (e) {
       console.error("Error loading leaderboard:", e);
-      setBuilders(MOCK_BUILDERS);
-      setStats(MOCK_STATS);
+      setBuilders([]);
+      setStats({ totalBounties: 0, activeBuilders: 0, globalPoolStx: 0 });
     } finally {
       setIsLoading(false);
     }
@@ -88,113 +74,97 @@ export default function LeaderboardPage() {
   }, []);
 
   return (
-    <div className="min-h-screen pb-20">
-      <Navbar />
-      
-      <main className="pt-32 px-4 mx-auto max-w-4xl">
-        <div className="text-center mb-16">
-          <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-orange-600/10 mb-6">
-             <Trophy className="h-8 w-8 text-orange-600" />
-          </div>
-          <h1 className="text-5xl font-bold tracking-tight">The Builder Hall of Fame</h1>
-          <p className="text-zinc-400 mt-4 text-xl">Top builders turning code into STX.</p>
-        </div>
+    <AuthGuard>
+      <div className="min-h-screen pb-20">
+        <Navbar />
 
-        {isLoading ? (
-           <div className="space-y-4">
-              {[1, 2, 3].map(i => (
-                 <div key={i} className="h-20 rounded-2xl bg-zinc-900 animate-pulse border border-zinc-800" />
-              ))}
-           </div>
-        ) : builders.length > 0 ? (
-          <div className="space-y-4">
-            {builders.map((builder, idx) => (
-              <motion.div
-                key={builder.address}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.1 }}
-              >
-                <Card className="border-zinc-800 hover:border-orange-600/50 transition-colors">
-                  <div className="flex items-center p-6 justify-between">
-                    <div className="flex items-center gap-6">
-                      <div className={`h-12 w-12 rounded-xl flex items-center justify-center font-bold text-lg
-                        ${idx === 0 ? "bg-yellow-500/20 text-yellow-500 border border-yellow-500/20" : 
-                          idx === 1 ? "bg-zinc-300/20 text-zinc-300 border border-zinc-300/20" : 
-                          idx === 2 ? "bg-orange-800/20 text-orange-800 border border-orange-800/20" : 
-                          "bg-zinc-900 text-zinc-500"}`}
-                      >
-                         #{idx + 1}
-                      </div>
-                      
-                      <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                           <User className="h-5 w-5 text-zinc-500" />
-                        </div>
-                        <div>
-                          <p className="font-mono text-lg font-bold">{truncateAddress(builder.address)}</p>
-                          <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">Verified Builder</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="text-right flex items-center gap-8">
-                       <div className="hidden sm:block">
-                          <p className="text-xs text-zinc-500 uppercase font-bold tracking-widest mb-1">Tasks</p>
-                          <p className="font-bold text-zinc-200">{builder.completed}</p>
-                       </div>
-                       <div>
-                          <p className="text-xs text-zinc-500 uppercase font-bold tracking-widest mb-1">Total Earned</p>
-                          <p className="font-bold text-orange-500 text-xl">{formatSTX(builder.earned)} STX</p>
-                       </div>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
+        <main className="pt-32 px-4 mx-auto max-w-6xl">
+          {/* Header */}
+          <div className="text-center mb-16">
+            <h1 className="text-5xl font-extrabold tracking-tight mb-4">The Arena</h1>
+            <p className="text-zinc-400 max-w-md mx-auto">Tracking the top contributors building the future of Bitcoin layers.</p>
+          </div>
+
+          {/* Stats Bar */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+            {[
+              { label: "Total Bounties", value: stats.totalBounties, icon: Trophy, color: "text-orange-500" },
+              { label: "Active Builders", value: stats.activeBuilders, icon: Users, color: "text-blue-500" },
+              { label: "Global Pool", value: `${formatSTX(stats.globalPoolStx)} STX`, icon: BarChart, color: "text-green-500" },
+            ].map((s, i) => (
+              <Card key={i} className="bg-zinc-950/50 border-zinc-800 p-6 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">{s.label}</p>
+                  <p className="text-2xl font-black">{s.value}</p>
+                </div>
+                <s.icon className={`h-8 w-8 ${s.color} opacity-20`} />
+              </Card>
             ))}
           </div>
-        ) : (
-          <div className="text-center py-40 border border-dashed border-zinc-800 rounded-3xl bg-zinc-900/10">
-            <Medal className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
-            <h3 className="text-xl font-bold">No data yet</h3>
-            <p className="text-zinc-500 mt-2">Earn rewards by completing tasks to show up here!</p>
-          </div>
-        )}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20">
-            <Card className="bg-blue-600/5 border-blue-600/20">
-               <CardHeader className="pb-2">
-                  <Medal className="h-5 w-5 text-blue-500 mb-2" />
-                  <CardTitle className="text-sm uppercase tracking-widest text-blue-500">Global Pool</CardTitle>
-               </CardHeader>
-               <CardContent>
-                  <p className="text-3xl font-bold">{stats.globalPoolStx.toLocaleString()} <span className="text-lg">STX</span></p>
-                  <p className="text-xs text-zinc-500 mt-2">Ready to be distributed</p>
-               </CardContent>
-            </Card>
-            <Card className="bg-purple-600/5 border-purple-600/20">
-               <CardHeader className="pb-2">
-                  <Award className="h-5 w-5 text-purple-500 mb-2" />
-                  <CardTitle className="text-sm uppercase tracking-widest text-purple-500">Total Bounties</CardTitle>
-               </CardHeader>
-               <CardContent>
-                  <p className="text-3xl font-bold">{stats.totalBounties}</p>
-                  <p className="text-xs text-zinc-500 mt-2">Tasks completed on Taskify</p>
-               </CardContent>
-            </Card>
-            <Card className="bg-orange-600/5 border-orange-600/20">
-               <CardHeader className="pb-2">
-                  <Zap className="h-5 w-5 text-orange-500 mb-2" />
-                  <CardTitle className="text-sm uppercase tracking-widest text-orange-500">Active Builders</CardTitle>
-               </CardHeader>
-               <CardContent>
-                  <p className="text-3xl font-bold">{stats.activeBuilders}</p>
-                  <p className="text-xs text-zinc-500 mt-2">Unique builders with completions</p>
-               </CardContent>
-            </Card>
-        </div>
-      </main>
-    </div>
+          {/* Leaderboard Table */}
+          <div className="bg-zinc-950 rounded-3xl border border-zinc-800 overflow-hidden">
+            <div className="p-8 border-b border-zinc-900 flex items-center justify-between">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-orange-500" /> Top Builders
+              </h2>
+            </div>
+
+            {isLoading ? (
+              <div className="p-8 space-y-4">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="h-16 rounded-xl bg-zinc-900 animate-pulse" />
+                ))}
+              </div>
+            ) : builders.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-900/50">
+                      <th className="p-6">Rank</th>
+                      <th className="p-6">Builder</th>
+                      <th className="p-6">Quests</th>
+                      <th className="p-6 text-right">Reputation</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-900/50">
+                    {builders.map((builder, idx) => (
+                      <tr key={builder.address} className="group hover:bg-zinc-900/30 transition-colors">
+                        <td className="p-6 font-mono text-zinc-500">
+                          {idx + 1 === 1 ? "🥇" : idx + 1 === 2 ? "🥈" : idx + 1 === 3 ? "🥉" : `#${idx + 1}`}
+                        </td>
+                        <td className="p-6">
+                          <Link href={`/profile/${builder.address}`} className="flex items-center gap-3 hover:text-orange-500 transition-colors">
+                             <div className="h-8 w-8 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-xs">
+                                {builder.username?.substring(0, 2) || "U"}
+                             </div>
+                             <span className="font-bold">{builder.username || truncateAddress(builder.address)}</span>
+                          </Link>
+                        </td>
+                        <td className="p-6">
+                           <span className="text-zinc-400 font-mono">{builder.tasks_completed || builder.completed || 0}</span>
+                        </td>
+                        <td className="p-6 text-right">
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/10 text-orange-500 font-black text-sm">
+                            {builder.score || builder.current_score || 0}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-20 text-center">
+                 <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-900 mb-6">
+                    <Search className="h-8 w-8 text-zinc-700" />
+                 </div>
+                 <p className="text-zinc-500 font-medium">The arena is quiet... for now.</p>
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    </AuthGuard>
   );
 }

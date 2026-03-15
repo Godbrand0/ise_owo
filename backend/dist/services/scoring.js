@@ -14,10 +14,15 @@ export function calculateScore(metrics) {
     return stxPoints + usdcxPoints + creationPoints + tipPoints;
 }
 export async function updateLeaderboard() {
-    const users = await pool.query('SELECT * FROM users');
-    for (const user of users.rows) {
-        const score = calculateScore(user);
-        await pool.query('UPDATE users SET current_score = $1, last_updated = NOW() WHERE address = $2', [score, user.address]);
-    }
+    await pool.query(`
+        UPDATE users SET
+            current_score = (
+                FLOOR(total_stx_funded / 1000000.0 * 10) +
+                FLOOR(total_usdcx_funded / 1000000.0 * 10) +
+                tasks_created * 50 +
+                FLOOR(avg_tip_percent * 100)
+            )::INTEGER,
+            last_updated = NOW()
+    `);
 }
 //# sourceMappingURL=scoring.js.map

@@ -1,19 +1,16 @@
-import pg from 'pg';
+import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const { Pool } = pg;
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_ANON_KEY!;
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY');
+}
 
-pool.on('error', (err) => {
-    console.error('Unexpected PostgreSQL pool error:', err);
-});
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
-export const query = (text: string, params?: unknown[]) => pool.query(text, params);
+export default supabase;
 
-export default pool;

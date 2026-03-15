@@ -40,14 +40,13 @@ describe("taskify contract tests", () => {
     
     const { result } = simnet.callPublicFn(
       "taskify",
-      "create-task",
+      "create-task-stx",
       [
         Cl.stringAscii("Test Task"),
         Cl.stringUtf8("Test Description"),
         Cl.none(),
         Cl.uint(fundingAmount),
         Cl.uint(deadline),
-        Cl.uint(0), // TOKEN-STX
         Cl.uint(2), // 2% tip
       ],
       wallet1
@@ -63,9 +62,9 @@ describe("taskify contract tests", () => {
 
     // 2. Create Task
     const funding = 1000000;
-    const createResult = simnet.callPublicFn("taskify", "create-task", [
+    const createResult = simnet.callPublicFn("taskify", "create-task-stx", [
         Cl.stringAscii("Bounty"), Cl.stringUtf8("Desc"), Cl.none(),
-        Cl.uint(funding), Cl.uint(simnet.blockHeight + 10), Cl.uint(0), Cl.uint(0)
+        Cl.uint(funding), Cl.uint(simnet.blockHeight + 10), Cl.uint(0)
     ], wallet1);
     
     expect(createResult.result).toBeOk(Cl.uint(0));
@@ -84,19 +83,18 @@ describe("taskify contract tests", () => {
     simnet.callPublicFn("taskify", "complete-task", [taskId], wallet2);
 
     // 7. Approve & Release
-    const { result } = simnet.callPublicFn("taskify", "approve-and-release", [taskId], wallet1);
+    const { result } = simnet.callPublicFn("taskify", "approve-and-release-stx", [taskId], wallet1);
     expect(result).toBeOk(Cl.bool(true));
 
     // Verify task status is 5 (FUNDS-RELEASED)
-    const task: any = simnet.callReadOnlyFn("taskify", "get-task", [taskId], wallet1).result;
-    // status is at index 9 in the tuple if checking manually, or use custom matchers if fixed
+    // const task: any = simnet.callReadOnlyFn("taskify", "get-task", [taskId], wallet1).result;
   });
 
   it("should prevent unauthorized fee withdrawal", () => {
     const { result } = simnet.callPublicFn(
       "taskify",
-      "withdraw-fees",
-      [Cl.uint(0)],
+      "withdraw-fees-stx",
+      [],
       wallet1
     );
     expect(result).toBeErr(Cl.uint(100)); // ERR-NOT-AUTHORIZED
@@ -105,20 +103,21 @@ describe("taskify contract tests", () => {
   it("should allow deployer to withdraw fees", () => {
     // 1. Setup: Create a task to generate fees
     simnet.callPublicFn("taskify", "register-user", [Cl.stringAscii("fee-gen")], wallet1);
-    simnet.callPublicFn("taskify", "create-task", [
+    simnet.callPublicFn("taskify", "create-task-stx", [
         Cl.stringAscii("Fee Task"), Cl.stringUtf8("Desc"), Cl.none(),
-        Cl.uint(1000000), Cl.uint(simnet.blockHeight + 10), Cl.uint(0), Cl.uint(3)
+        Cl.uint(1000000), Cl.uint(simnet.blockHeight + 10), Cl.uint(3)
     ], wallet1);
     // Total fee = 2% base + 3% tip = 5% = 50,000 STX
-    // Platform fee (80%) = 40,000 STX
+    // Platform fee (80%) = 40,000 STX (assuming base-fee and tip are handled correctly in the contract)
 
     // 2. Withdraw
     const { result } = simnet.callPublicFn(
       "taskify",
-      "withdraw-fees",
-      [Cl.uint(0)], // TOKEN-STX
+      "withdraw-fees-stx",
+      [],
       deployer
     );
+    // The contract logic says ok amount, let's verify if matches expectation
     expect(result).toBeOk(Cl.uint(40000));
   });
 });

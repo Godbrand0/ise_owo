@@ -2,13 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import insightsRouter from './routes/insights.js';
+import userRouter from './routes/user.js';
 import { syncBlockchainData } from './services/sync.js';
 import { updateLeaderboard } from './services/scoring.js';
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT ?? 3001;
+const port = process.env.PORT ?? 4000;
 
 app.use(cors({
     origin: process.env.NODE_ENV === 'production'
@@ -35,6 +36,7 @@ app.post('/api/sync', async (_req, res) => {
 });
 
 app.use('/api', insightsRouter);
+app.use('/api', userRouter);
 
 app.listen(port, () => {
     console.log(`Taskify Backend listening at http://localhost:${port}`);

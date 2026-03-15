@@ -1,6 +1,6 @@
 import { uintCV, fetchCallReadOnlyFunction, cvToJSON, principalCV } from "@stacks/transactions";
 import { NETWORK, CONTRACT_ADDRESS, CONTRACT_NAME } from "../lib/constants.js";
-import pool from "../db.js";
+import { supabase } from "../db.js";
 
 export const getTaskCounter = async () => {
     try {
@@ -73,14 +73,11 @@ export const syncBlockchainData = async () => {
             if (task.assignee) uniqueUsers.add(task.assignee);
 
             // Update tasks_metadata
-            await pool.query(
-                `INSERT INTO tasks_metadata (task_id, github_link, description_raw)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (task_id) DO UPDATE SET 
-                    github_link = EXCLUDED.github_link,
-                    description_raw = EXCLUDED.description_raw`,
-                [i, task.githubLink, task.description]
-            );
+            await supabase.from('tasks_metadata').upsert({
+                task_id: i,
+                github_link: task.githubLink,
+                description_raw: task.description
+            }, { onConflict: 'task_id' });
         }
     }
 
@@ -93,27 +90,16 @@ export const syncBlockchainData = async () => {
                 return acc;
             }, {});
 
-            await pool.query(
-                `INSERT INTO users (address, username, tasks_created, tasks_completed, total_stx_funded, total_usdcx_funded, avg_tip_percent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT (address) DO UPDATE SET
-                    username = EXCLUDED.username,
-                    tasks_created = EXCLUDED.tasks_created,
-                    tasks_completed = EXCLUDED.tasks_completed,
-                    total_stx_funded = EXCLUDED.total_stx_funded,
-                    total_usdcx_funded = EXCLUDED.total_usdcx_funded,
-                    avg_tip_percent = EXCLUDED.avg_tip_percent,
-                    last_updated = NOW()`,
-                [
-                    address,
-                    user.username,
-                    Number(user.tasksCreated),
-                    Number(user.tasksCompleted),
-                    user.totalFunded, // total_stx_funded in DB
-                    0, // USDCx placeholder
-                    0  // avg_tip placeholder
-                ]
-            );
+            await supabase.from('users').upsert({
+                address,
+                username: user.username,
+                tasks_created: Number(user.tasksCreated),
+                tasks_completed: Number(user.tasksCompleted),
+                total_stx_funded: user.totalFunded,
+                total_usdcx_funded: 0,
+                avg_tip_percent: 0,
+                last_updated: new Date().toISOString()
+            }, { onConflict: 'address' });
         }
     }
 
