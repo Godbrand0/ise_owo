@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import insightsRouter from './routes/insights.js';
 import userRouter from './routes/user.js';
+import authRouter from './routes/auth.js';
+import cookieParser from 'cookie-parser';
 import { syncBlockchainData } from './services/sync.js';
 import { updateLeaderboard } from './services/scoring.js';
 
@@ -17,6 +19,7 @@ app.use(cors({
         : true,
     credentials: true,
 }));
+app.use(cookieParser());
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
@@ -37,6 +40,7 @@ app.post('/api/sync', async (_req, res) => {
 
 app.use('/api', insightsRouter);
 app.use('/api', userRouter);
+app.use('/api', authRouter);
 
 app.listen(port, () => {
     console.log(`Taskify Backend listening at http://localhost:${port}`);

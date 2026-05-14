@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import pool from '../db.js';
+import { supabase } from '../db.js';
 const router = Router();
 /**
  * @route POST /api/users
@@ -11,18 +11,19 @@ router.post('/users', async (req, res) => {
         return res.status(400).json({ error: 'Missing required fields: address, username' });
     }
     try {
-        const query = `
-            INSERT INTO users (address, username, github_username, role)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (address) DO UPDATE SET
-                username = EXCLUDED.username,
-                github_username = COALESCE(EXCLUDED.github_username, users.github_username),
-                role = COALESCE(EXCLUDED.role, users.role),
-                last_updated = NOW()
-            RETURNING *;
-        `;
-        const result = await pool.query(query, [address, username, github_username, role]);
-        res.json({ message: 'User updated successfully', user: result.rows[0] });
+        const { data, error } = await supabase
+            .from('users')
+            .upsert({
+            address,
+            username,
+            github_username,
+            role,
+            last_updated: new Date().toISOString()
+        }, { onConflict: 'address' })
+            .select();
+        if (error)
+            throw error;
+        res.json({ message: 'User updated successfully', user: data[0] });
     }
     catch (error) {
         console.error('Error upserting user:', error);
@@ -36,11 +37,18 @@ router.post('/users', async (req, res) => {
 router.get('/users/:address', async (req, res) => {
     const { address } = req.params;
     try {
-        const result = await pool.query('SELECT * FROM users WHERE address = $1', [address]);
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('address', address)
+            .single();
+        if (error) {
+            if (error.code === 'PGRST116') { // No rows found
+                return res.status(404).json({ error: 'User not found' });
+            }
+            throw error;
         }
-        res.json(result.rows[0]);
+        res.json(data);
     }
     catch (error) {
         console.error('Error fetching user:', error);

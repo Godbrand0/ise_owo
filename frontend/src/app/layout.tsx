@@ -3,6 +3,8 @@ import "./globals.css";
 import { StacksProvider } from "../context/StacksContext";
 import { Toaster } from "react-hot-toast";
 
+import { ReduxProvider } from "../store/StoreProvider";
+
 // Using system font stack to avoid build-time network issues with Google Fonts
 const interClassName = "font-sans";
 
@@ -19,10 +21,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${interClassName} bg-zinc-950 text-zinc-50 antialiased`}>
-        <StacksProvider>
-          {children}
-          <Toaster position="bottom-right" />
-        </StacksProvider>
+        <ReduxProvider>
+          <StacksProvider>
+            {children}
+            <Toaster position="bottom-right" />
+          </StacksProvider>
+        </ReduxProvider>
       </body>
     </html>
   );

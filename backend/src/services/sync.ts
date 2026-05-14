@@ -82,6 +82,20 @@ export const syncBlockchainData = async () => {
     }
 
     console.log(`Syncing ${uniqueUsers.size} unique users...`);
+    
+    // Pre-calculate assignments and applications from what we've seen in tasks
+    // (Note: This is a bit inefficient but works for now as we're already fetching tasks)
+    const taskAssignmentsCount: Record<string, number> = {};
+    const taskApplicationsCount: Record<string, number> = {}; // We'd need to fetch applicants for each task
+
+    for (let i = 0; i < counter; i++) {
+        const taskData = await getTask(i);
+        if (taskData && taskData.assignee.value) {
+            const assignee = taskData.assignee.value;
+            taskAssignmentsCount[assignee] = (taskAssignmentsCount[assignee] || 0) + 1;
+        }
+    }
+
     for (const address of uniqueUsers) {
         const userData = await getUser(address);
         if (userData) {
@@ -96,7 +110,11 @@ export const syncBlockchainData = async () => {
                 tasks_created: Number(user.tasksCreated),
                 tasks_completed: Number(user.tasksCompleted),
                 total_stx_funded: user.totalFunded,
+                total_stx_earned: user.totalEarned,
                 total_usdcx_funded: 0,
+                total_usdcx_earned: 0,
+                tasks_assigned: taskAssignmentsCount[address] || 0,
+                tasks_applied: 0,  // Requires fetching events or mapping over multiple maps
                 avg_tip_percent: 0,
                 last_updated: new Date().toISOString()
             }, { onConflict: 'address' });

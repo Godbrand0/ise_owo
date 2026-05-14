@@ -50,17 +50,17 @@ export function Navbar() {
           <div className="hidden items-center gap-4 sm:flex">
             {isConnected ? (
               <div className="flex items-center gap-3">
-                <div className="flex flex-col items-end mr-2">
-                  <span className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500 flex items-center gap-1">
+                <Link href={`/profile/${address}`} className="flex flex-col items-end mr-2 group/profile">
+                  <span className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500 flex items-center gap-1 group-hover/profile:text-orange-500 transition-colors">
                     {userRole === "creator" && <><Search className="h-2.5 w-2.5 text-blue-500" /> Creator</>}
                     {userRole === "contributor" && <><GitPullRequest className="h-2.5 w-2.5 text-orange-500" /> Contributor</>}
                     {!userRole && "Connected"}
                   </span>
-                  <span className="text-sm font-bold flex items-center gap-2 font-mono">
+                  <span className="text-sm font-bold flex items-center gap-2 font-mono group-hover/profile:text-white transition-colors">
                     {truncateAddress(address!)}
                     {githubLinked && <Github className="h-3.5 w-3.5 text-zinc-400" />}
                   </span>
-                </div>
+                </Link>
                 <Button variant="outline" size="icon" onClick={disconnectWallet} title="Disconnect" className="h-9 w-9 border-zinc-200 dark:border-zinc-800">
                   <LogOut className="h-4 w-4" />
                 </Button>
@@ -138,19 +138,23 @@ export function Navbar() {
                 <div className="mt-auto pt-10 border-t border-zinc-100 dark:border-zinc-900">
                   {isConnected ? (
                     <div className="space-y-4">
-                      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
+                      <Link 
+                        href={`/profile/${address}`} 
+                        onClick={closeMobileMenu}
+                        className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800 active:scale-[0.98] transition-all"
+                      >
                         <div className="h-10 w-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center">
                           <Trophy className="h-5 w-5 text-orange-600" />
                         </div>
                         <div className="flex flex-col overflow-hidden">
                           <span className="text-[10px] font-bold uppercase text-zinc-500">
-                            {userRole || "Connected"}
+                            {userRole || "Connected"} • View Profile
                           </span>
                           <span className="text-sm font-mono font-bold truncate">
                             {truncateAddress(address!)}
                           </span>
                         </div>
-                      </div>
+                      </Link>
                       <Button variant="outline" className="w-full justify-start gap-3 h-12 rounded-xl" onClick={() => { disconnectWallet(); closeMobileMenu(); }}>
                         <LogOut className="h-4 w-4" />
                         Disconnect Wallet

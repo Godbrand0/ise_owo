@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -8,65 +8,116 @@ import { Input } from "@/components/ui/Input";
 import { useStacks } from "@/context/StacksContext";
 import { registerUser } from "@/lib/contract";
 import { toast } from "react-hot-toast";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { UserPlus, Wallet, Github, GitPullRequest, Search, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function RegisterPage() {
+function RegisterForm() {
   const { 
     isConnected, 
     address, 
     connectWallet, 
     isRegistered, 
+    userProfile,
     refreshUserData,
     githubLinked,
     setGithubLinked,
     verifiedGithubUsername,
     setVerifiedGithubUsername,
     userRole,
-    setUserRole
+    setUserRole,
+    isLoadingMetadata
   } = useStacks();
   
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
-  const [githubInput, setGithubInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);
 
-  // Auto-advance if registered
+  // Handle OAuth callback parameters
   useEffect(() => {
-    if (isRegistered) {
-      router.push("/tasks");
-    }
-  }, [isRegistered, router]);
+    const isGithubVerified = searchParams.get("github_verified") === "true";
+    const githubUser = searchParams.get("username");
+    const error = searchParams.get("error");
 
-  // Auto-advance if wallet already connected when landing on step 1
+    if (isGithubVerified && githubUser) {
+      setVerifiedGithubUsername(githubUser);
+      setGithubLinked(true);
+      setStep(3); // Go to role selection
+      toast.success(`GitHub account @${githubUser} verified!`);
+      
+      // Clean up URL parameters without refreshing
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    } else if (error === "github_auth_failed") {
+      toast.error("GitHub authentication failed. Please try again.");
+      setStep(2);
+    }
+  }, [searchParams, setVerifiedGithubUsername, setGithubLinked]);
+
+  // Check if we already have a role/registration on boot
+  useEffect(() => {
+    if (!isLoadingMetadata && isRegistered && userRole) {
+      if (userRole === "creator") {
+        router.push("/creator");
+      } else {
+        router.push("/tasks");
+      }
+    }
+  }, [isRegistered, userRole, isLoadingMetadata, router]);
+
+  // Advance to role selection if GitHub is successfully linked
+  useEffect(() => {
+    if (githubLinked && step === 2) {
+      setStep(3);
+    }
+  }, [githubLinked, step]);
+
+  // Combined wallet connection and initial step logic
+  useEffect(() => {
+    if (isLoadingMetadata) return;
+
+    if (isConnected && step === 1) {
+      // If already registered, don't advance to Step 2 (handled by redirection effect)
+      if (isRegistered) return;
+
+      // Check if we just came back from GitHub
+      const isGithubVerified = searchParams.get("github_verified") === "true";
+      if (isGithubVerified) {
+        setStep(3);
+      } else {
+        setStep(2);
+      }
+    }
+  }, [isConnected, step, searchParams, isRegistered, isLoadingMetadata]);
+
+  // Pre-fill username if already registered on-chain
+  useEffect(() => {
+    if (isRegistered && userProfile?.username && !username) {
+      setUsername(userProfile.username);
+    }
+  }, [isRegistered, userProfile, username]);
+
+  if (isLoadingMetadata) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 gap-4">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-orange-600 border-t-transparent" />
+        <p className="text-zinc-500 font-medium animate-pulse">Checking your identity...</p>
+      </div>
+    );
+  }
 
   const handleVerifyGithubProfile = async () => {
-// ... existing handleVerifyGithubProfile ...
-    if (!githubInput.trim()) {
-      toast.error("Please enter your GitHub username.");
+    if (!isConnected || !address) {
+      toast.error("Please connect your wallet first");
       return;
     }
 
     setIsLoading(true);
-    try {
-      const response = await fetch(`https://api.github.com/users/${githubInput.trim()}`);
-      if (response.ok) {
-        const data = await response.json();
-        setVerifiedGithubUsername(data.login);
-        setGithubLinked(true);
-        setStep(3);
-        toast.success(`GitHub account @${data.login} verified!`);
-      } else {
-        toast.error("GitHub user not found. Please check the spelling.");
-      }
-    } catch (err) {
-      console.error("GitHub check error:", err);
-      toast.error("Failed to connect to GitHub. Try again later.");
-    } finally {
-      setIsLoading(false);
-    }
+    // Redirect to backend OAuth initiation
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000";
+    window.location.href = `${backendUrl}/api/auth/github?address=${address}`;
   };
 
   const handleRoleSelection = (role: "creator" | "contributor") => {
@@ -74,7 +125,6 @@ export default function RegisterPage() {
     setStep(4);
   };
 
-// ... (handleSubmit starts here) ...
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isConnected) {
@@ -84,13 +134,45 @@ export default function RegisterPage() {
 
     setIsLoading(true);
     try {
-      // 1. Initiate on-chain registration
+      if (isRegistered) {
+        try {
+          const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000"}/api/users`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              address,
+              username: userProfile?.username || username,
+              github_username: verifiedGithubUsername,
+              role: userRole
+            })
+          });
+          
+          if (res.ok) {
+            toast.success("Profile updated!");
+            await refreshUserData();
+            if (userRole === "creator") {
+              router.push("/creator");
+            } else {
+              router.push("/tasks");
+            }
+          } else {
+            const errData = await res.json();
+            toast.error(errData.error || "Failed to update profile");
+          }
+        } catch (err) {
+          console.error("Failed to save metadata to backend:", err);
+          toast.error("Network error saving profile");
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       await registerUser(
         username,
         async () => {
           toast.success("Transaction submitted to blockchain!");
           
-          // 2. Save off-chain metadata to our backend
           try {
             const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000"}/api/users`, {
               method: 'POST',
@@ -110,7 +192,6 @@ export default function RegisterPage() {
             console.error("Failed to save metadata to backend:", err);
           }
 
-          // 3. Wait for confirmation and redirect
           toast.success("Waiting for block confirmation...");
           let attempts = 0;
           const interval = setInterval(async () => {
@@ -118,7 +199,11 @@ export default function RegisterPage() {
             await refreshUserData();
             if (attempts >= 4) {
               clearInterval(interval);
-              router.push("/tasks");
+              if (userRole === "creator") {
+                router.push("/creator");
+              } else {
+                router.push("/tasks");
+              }
             }
           }, 5000);
         },
@@ -181,32 +266,26 @@ export default function RegisterPage() {
               <div className="inline-flex h-24 w-24 items-center justify-center rounded-full bg-zinc-900 border-4 border-zinc-800 mb-8 mx-auto">
                  <Github className="h-12 w-12 text-zinc-100" />
               </div>
-              <h1 className="text-4xl font-extrabold tracking-tight mb-4">Verify GitHub</h1>
+              <h1 className="text-4xl font-extrabold tracking-tight mb-4">Connect GitHub</h1>
               <p className="text-lg text-zinc-400 mb-10 max-w-md mx-auto">
-                Enter your GitHub handle to import your identity and build trust as a developer.
+                Authorize Taskify to verify your developer identity and link your contributions.
               </p>
               
               <div className="space-y-4 max-w-sm mx-auto">
-                <Input 
-                  placeholder="Your GitHub username (e.g. octocat)"
-                  value={githubInput}
-                  onChange={(e) => setGithubInput(e.target.value)}
-                  className="h-14 text-center text-lg bg-zinc-900 border-zinc-800 rounded-xl"
-                />
                 <Button 
                   size="lg" 
-                  className="w-full h-14 text-lg font-bold rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 flex items-center justify-center gap-3" 
+                  className="w-full h-16 text-xl font-bold rounded-2xl bg-white hover:bg-zinc-200 text-zinc-950 flex items-center justify-center gap-3 shadow-xl" 
                   onClick={handleVerifyGithubProfile}
                   isLoading={isLoading}
                 >
-                  <Github className="h-5 w-5" /> {isLoading ? "Verifying..." : "Verify GitHub Account"}
+                  <Github className="h-6 w-6" /> {isLoading ? "Redirecting..." : "Connect GitHub Account"}
                 </Button>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 pt-4">
                   <button 
                     onClick={() => setStep(3)} 
                     className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors font-medium"
                   >
-                    Skip for now
+                    I'll do this later
                   </button>
                 </div>
               </div>
@@ -327,5 +406,17 @@ export default function RegisterPage() {
         </AnimatePresence>
       </main>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-orange-600 border-t-transparent" />
+      </div>
+    }>
+      <RegisterForm />
+    </Suspense>
   );
 }

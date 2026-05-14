@@ -40,11 +40,19 @@ export async function updateLeaderboard(): Promise<void> {
         last_updated: new Date().toISOString()
     }));
 
-    // Batch upsert to update scores
-    const { error: updateError } = await supabase
-        .from('users')
-        .upsert(updates, { onConflict: 'address' });
+    // Update each user's score individually to avoid constraint issues with upsert
+    for (const update of updates) {
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({
+                current_score: update.current_score,
+                last_updated: update.last_updated
+            })
+            .eq('address', update.address);
 
-    if (updateError) throw updateError;
+        if (updateError) {
+            console.error(`Failed to update score for ${update.address}:`, updateError);
+        }
+    }
 }
 

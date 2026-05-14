@@ -1,6 +1,6 @@
 import { uintCV, fetchCallReadOnlyFunction, cvToJSON, principalCV } from "@stacks/transactions";
 import { NETWORK, CONTRACT_ADDRESS, CONTRACT_NAME } from "../lib/constants.js";
-import pool from "../db.js";
+import { supabase } from "../db.js";
 export const getTaskCounter = async () => {
     try {
         const result = await fetchCallReadOnlyFunction({
@@ -69,14 +69,25 @@ export const syncBlockchainData = async () => {
             if (task.assignee)
                 uniqueUsers.add(task.assignee);
             // Update tasks_metadata
-            await pool.query(`INSERT INTO tasks_metadata (task_id, github_link, description_raw)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (task_id) DO UPDATE SET 
-                    github_link = EXCLUDED.github_link,
-                    description_raw = EXCLUDED.description_raw`, [i, task.githubLink, task.description]);
+            await supabase.from('tasks_metadata').upsert({
+                task_id: i,
+                github_link: task.githubLink,
+                description_raw: task.description
+            }, { onConflict: 'task_id' });
         }
     }
     console.log(`Syncing ${uniqueUsers.size} unique users...`);
+    // Pre-calculate assignments and applications from what we've seen in tasks
+    // (Note: This is a bit inefficient but works for now as we're already fetching tasks)
+    const taskAssignmentsCount = {};
+    const taskApplicationsCount = {}; // We'd need to fetch applicants for each task
+    for (let i = 0; i < counter; i++) {
+        const taskData = await getTask(i);
+        if (taskData && taskData.assignee.value) {
+            const assignee = taskData.assignee.value;
+            taskAssignmentsCount[assignee] = (taskAssignmentsCount[assignee] || 0) + 1;
+        }
+    }
     for (const address of uniqueUsers) {
         const userData = await getUser(address);
         if (userData) {
@@ -84,24 +95,20 @@ export const syncBlockchainData = async () => {
                 acc[key] = val.value !== undefined ? val.value : val;
                 return acc;
             }, {});
-            await pool.query(`INSERT INTO users (address, username, tasks_created, tasks_completed, total_stx_funded, total_usdcx_funded, avg_tip_percent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT (address) DO UPDATE SET
-                    username = EXCLUDED.username,
-                    tasks_created = EXCLUDED.tasks_created,
-                    tasks_completed = EXCLUDED.tasks_completed,
-                    total_stx_funded = EXCLUDED.total_stx_funded,
-                    total_usdcx_funded = EXCLUDED.total_usdcx_funded,
-                    avg_tip_percent = EXCLUDED.avg_tip_percent,
-                    last_updated = NOW()`, [
+            await supabase.from('users').upsert({
                 address,
-                user.username,
-                Number(user.tasksCreated),
-                Number(user.tasksCompleted),
-                user.totalFunded, // total_stx_funded in DB
-                0, // USDCx placeholder
-                0 // avg_tip placeholder
-            ]);
+                username: user.username,
+                tasks_created: Number(user.tasksCreated),
+                tasks_completed: Number(user.tasksCompleted),
+                total_stx_funded: user.totalFunded,
+                total_stx_earned: user.totalEarned,
+                total_usdcx_funded: 0,
+                total_usdcx_earned: 0,
+                tasks_assigned: taskAssignmentsCount[address] || 0,
+                tasks_applied: 0, // Requires fetching events or mapping over multiple maps
+                avg_tip_percent: 0,
+                last_updated: new Date().toISOString()
+            }, { onConflict: 'address' });
         }
     }
     console.log("Blockchain synchronization complete.");

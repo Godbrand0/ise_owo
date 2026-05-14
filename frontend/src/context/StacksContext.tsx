@@ -22,6 +22,7 @@ interface StacksContextType {
   disconnectWallet: () => void;
   network: StacksNetwork;
   refreshUserData: () => Promise<void>;
+  isLoadingMetadata: boolean;
 }
 
 const StacksContext = createContext<StacksContextType | undefined>(undefined);
@@ -35,6 +36,7 @@ export function StacksProvider({ children }: { children: ReactNode }) {
   const [userRole, setUserRole] = useState<"creator" | "contributor" | null>(null);
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [isLoadingMetadata, setIsLoadingMetadata] = useState(true); // Start true until proven otherwise
 
   // Preference order for finding a valid STX address
 // ... (address logic omitted for brevity) ...
@@ -46,6 +48,7 @@ export function StacksProvider({ children }: { children: ReactNode }) {
 
   const refreshUserData = async () => {
     if (!address) return;
+    setIsLoadingMetadata(true);
     try {
       // 1. Fetch On-chain Data
       const { fetchCallReadOnlyFunction, cvToJSON, principalCV } = await import("@stacks/transactions");
@@ -95,6 +98,8 @@ export function StacksProvider({ children }: { children: ReactNode }) {
 
     } catch (e) {
       console.error("Error fetching user profile:", e);
+    } finally {
+      setIsLoadingMetadata(false);
     }
   };
 
@@ -108,6 +113,8 @@ export function StacksProvider({ children }: { children: ReactNode }) {
       
       if (session.isUserSignedIn()) {
         setUserData(session.loadUserData());
+      } else {
+        setIsLoadingMetadata(false);
       }
     };
     init();
@@ -166,6 +173,7 @@ export function StacksProvider({ children }: { children: ReactNode }) {
     disconnectWallet,
     network: NETWORK,
     refreshUserData,
+    isLoadingMetadata,
   };
 
   if (!isMounted) return null;

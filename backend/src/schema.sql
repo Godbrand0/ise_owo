@@ -8,13 +8,17 @@ DROP TABLE IF EXISTS tasks_metadata CASCADE;
 -- 1. Users table (address is PK)
 CREATE TABLE users (
     address TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
+    username TEXT UNIQUE,
     github_username TEXT,
     role TEXT,
     tasks_created INTEGER DEFAULT 0,
+    tasks_applied INTEGER DEFAULT 0,
+    tasks_assigned INTEGER DEFAULT 0,
     tasks_completed INTEGER DEFAULT 0,
     total_stx_funded BIGINT DEFAULT 0,
     total_usdcx_funded BIGINT DEFAULT 0,
+    total_stx_earned BIGINT DEFAULT 0,
+    total_usdcx_earned BIGINT DEFAULT 0,
     avg_tip_percent NUMERIC(5,2) DEFAULT 0,
     current_score INTEGER DEFAULT 0,
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

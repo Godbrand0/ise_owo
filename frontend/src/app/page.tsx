@@ -35,18 +35,41 @@ const features = [
 ];
 
 export default function Home() {
-  const { isConnected, connectWallet, isRegistered } = useStacks();
+  const { isConnected, connectWallet, isRegistered, userRole, isLoadingMetadata } = useStacks();
   const router = useRouter();
 
   useEffect(() => {
-    // If we land here and user is not registered, send to onboarding
-    // We only do this if they haven't connected yet OR they are connected but not registered
-    // Actually, the request says "make /register the first page a new user sees"
-    // So if they are not registered, they should go there.
-    if (!isRegistered) {
+    // Wait for metadata to load before making redirection decisions
+    if (isLoadingMetadata) return;
+
+    if (isConnected) {
+      if (isRegistered) {
+        // Direct to appropriate dashboard based on role
+        if (userRole === "creator") {
+          router.push("/creator");
+        } else if (userRole === "contributor") {
+          router.push("/tasks");
+        } else {
+          // If registered but no role (unlikely), send to registration to complete
+          router.push("/register");
+        }
+      } else {
+        // Connected but not registered, send to onboarding
+        router.push("/register");
+      }
+    } else {
+      // Not connected, send to onboarding
       router.push("/register");
     }
-  }, [isRegistered, router]);
+  }, [isConnected, isRegistered, userRole, isLoadingMetadata, router]);
+
+  if (isLoadingMetadata) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-orange-600 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">

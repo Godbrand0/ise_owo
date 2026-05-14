@@ -1,4 +1,4 @@
-import pool from '../db.js';
+import { supabase } from '../db.js';
 /**
  * Deterministic Scoring Engine
  * Formula:
@@ -7,22 +7,38 @@ import pool from '../db.js';
  * - Avg Tip: 100 points per % point
  */
 export function calculateScore(metrics) {
-    const stxPoints = Math.floor((metrics.total_stx_funded / 1e6) * 10);
-    const usdcxPoints = Math.floor((metrics.total_usdcx_funded / 1e6) * 10);
+    const stxPoints = Math.floor((Number(metrics.total_stx_funded) / 1e6) * 10);
+    const usdcxPoints = Math.floor((Number(metrics.total_usdcx_funded) / 1e6) * 10);
     const creationPoints = metrics.tasks_created * 50;
     const tipPoints = Math.floor(metrics.avg_tip_percent * 100);
     return stxPoints + usdcxPoints + creationPoints + tipPoints;
 }
 export async function updateLeaderboard() {
-    await pool.query(`
-        UPDATE users SET
-            current_score = (
-                FLOOR(total_stx_funded / 1000000.0 * 10) +
-                FLOOR(total_usdcx_funded / 1000000.0 * 10) +
-                tasks_created * 50 +
-                FLOOR(avg_tip_percent * 100)
-            )::INTEGER,
-            last_updated = NOW()
-    `);
+    // Fetch all users to calculate scores
+    const { data: users, error } = await supabase
+        .from('users')
+        .select('address, tasks_created, tasks_completed, total_stx_funded, total_usdcx_funded, avg_tip_percent');
+    if (error)
+        throw error;
+    if (!users)
+        return;
+    const updates = users.map(user => ({
+        address: user.address,
+        current_score: calculateScore(user),
+        last_updated: new Date().toISOString()
+    }));
+    // Update each user's score individually to avoid constraint issues with upsert
+    for (const update of updates) {
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({
+            current_score: update.current_score,
+            last_updated: update.last_updated
+        })
+            .eq('address', update.address);
+        if (updateError) {
+            console.error(`Failed to update score for ${update.address}:`, updateError);
+        }
+    }
 }
 //# sourceMappingURL=scoring.js.map
